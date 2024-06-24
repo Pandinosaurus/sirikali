@@ -215,7 +215,10 @@ int sirikali::run( const QStringList& args,int argc,char * argv[] )
 		QApplication srk( argc,argv ) ;
 
 		srk.setApplicationName( "SiriKali" ) ;
-		srk.setDesktopFileName( "io.github.mhogomchungu.sirikali" ) ;
+
+		#if QT_VERSION >= QT_VERSION_CHECK( 5,11,3 )
+			srk.setDesktopFileName( "io.github.mhogomchungu.sirikali" ) ;
+		#endif
 
 		return starter( args,srk ).exec() ;
 	}
@@ -1368,14 +1371,18 @@ void sirikali::volumeProperties()
 
 	if( engine.canShowVolumeProperties() ){
 
+		this->disableAll() ;
+
 		auto s = engine.volumeProperties( cipherPath,mountPath ).await() ;
 
 		if( s.isEmpty() ){
 
 			this->genericVolumeProperties() ;
 		}else {
-			return DialogMsg( this ).ShowUIInfo( tr( "INFORMATION" ),true,s ) ;
+			DialogMsg( this ).ShowUIInfo( tr( "INFORMATION" ),true,s ) ;
 		}
+
+		this->enableAll() ;
 	}else{
 		this->genericVolumeProperties() ;
 	}

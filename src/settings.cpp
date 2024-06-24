@@ -537,7 +537,9 @@ void settings::scaleGUI()
 
 	if( this->enableHighDpiScaling() ){
 
-		QApplication::setAttribute( Qt::AA_EnableHighDpiScaling ) ;
+		#if QT_VERSION < QT_VERSION_CHECK( 6,0,0 )
+			QApplication::setAttribute( Qt::AA_EnableHighDpiScaling ) ;
+		#endif
 	}
 
 	auto a = this->enabledHighDpiScalingFactor() ;
@@ -596,7 +598,7 @@ static void _set_mount_default( settings& s )
 
 	if( utility::platformIsWindows() ){
 
-		m.setValue( "MountPrefix",s.homePath() + "/Desktop" ) ;
+		m.setValue( "MountPrefix",s.homePath() ) ;
 	}else{
 		m.setValue( "MountPrefix",s.homePath() + "/.SiriKali" ) ;
 	}
@@ -641,7 +643,12 @@ QString settings::ConfigLocation()
 
 	if( !m_settings.contains( "AppDataLocation" ) ){
 
-		auto New = QStandardPaths::standardLocations( QStandardPaths::AppDataLocation ) ;
+		#if QT_VERSION > QT_VERSION_CHECK( 5,4,0 )
+			auto New = QStandardPaths::standardLocations( QStandardPaths::AppDataLocation ) ;
+		#else
+			QStringList New ;
+		#endif
+
 		auto old = QStandardPaths::standardLocations( QStandardPaths::ConfigLocation ) ;
 
 		QString newPath ;
@@ -919,14 +926,16 @@ QString settings::localizationLanguagePath()
 		return QDir().currentPath() + "/translations" ;
 	}
 
+	if( utility::platformIsOSX() ){
+
+		auto m = QCoreApplication::applicationDirPath() ;
+
+		return m + + "/../Resources/translations" ;
+	}
+
 	if( !m_settings.contains( "TranslationsPath" ) ){
 
-		if( utility::platformIsOSX() ){
-
-			m_settings.setValue( "TranslationsPath",TRANSLATION_PATH ) ;
-		}else{
-			m_settings.setValue( "TranslationsPath",TRANSLATION_PATH ) ;
-		}
+		m_settings.setValue( "TranslationsPath",TRANSLATION_PATH ) ;
 	}
 
 	return m_settings.value( "TranslationsPath" ).toString() ;
@@ -1530,7 +1539,12 @@ void settings::translator::setLanguage( const QByteArray& e )
 
 		m_translator = new QTranslator() ;
 
-		m_translator->load( e.constData(),settings::instance().localizationLanguagePath() ) ;
+		auto m = m_translator->load( e.constData(),settings::instance().localizationLanguagePath() ) ;
+
+		if( !m ){
+
+			//????
+		}
 
 		return m_translator ;
 	}() ) ;
