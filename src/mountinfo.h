@@ -111,7 +111,7 @@ public:
 			m_tv.tv_sec  = sec ;
 			m_tv.tv_usec = usec ;
 
-			FD_ZERO( &m_rfds ) ;
+			m_rfds.zero() ;
 		}
 		template< typename Function >
 		void poll( Function&& function ) const
@@ -120,12 +120,12 @@ public:
 
 			while( true ){
 
-				FD_SET( m_fd,&m_rfds ) ;
+				m_rfds.set( m_fd ) ;
 
 				tv.tv_sec  = m_tv.tv_sec ;
 				tv.tv_usec = m_tv.tv_usec ;
 
-				auto r = select( m_fd + 1,&m_rfds,nullptr,nullptr,&tv ) ;
+				auto r = sirikali_select( m_fd + 1,m_rfds.get(),nullptr,nullptr,&tv ) ;
 
 				if( function( r ) ){
 
@@ -135,7 +135,7 @@ public:
 		}
 	private:
 		int m_fd ;
-		mutable fd_set m_rfds ;
+		mutable sirikali_fd_set m_rfds ;
 		struct timeval m_tv ;
 	} ;
 
@@ -338,12 +338,16 @@ private:
 	std::function< void( const QString& ) >& m_debug ;
 } ;
 
-class mountinfo : private QObject
+class mountinfo : public QObject
 {
 	Q_OBJECT
 public:
 	struct volumeEntry{
 
+		volumeEntry( const engines::engine& e,volumeInfo v ) :
+			engine( e ),vInfo( std::move( v ) )
+		{
+		}
 		const engines::engine& engine ;
 		volumeInfo vInfo ;
 	} ;
@@ -374,16 +378,18 @@ public:
 	void announceEvents( bool ) ;
 
 	~mountinfo() ;
-private slots:
-	void volumeUpdate( void ) ;
 private:
-	void windowsMonitor( void ) ;
-	void linuxMonitor( void ) ;
-	void qtMonitor( void ) ;
-	void updateVolume( void ) ;
-	void pbUpdate( void ) ;
+signals:
+	void updateVolume() ;
+	void pbUpdate() ;
 	void autoMount( const QString& ) ;
-	void pollForUpdates( void ) ;
+private:
+	void updateVolumeHandle() ;
+	void volumeUpdate() ;
+	void windowsMonitor() ;
+	void linuxMonitor() ;
+	void qtMonitor() ;
+	void pollForUpdates() ;
 
 	QObject * m_parent ;
 

@@ -37,6 +37,82 @@ class favorites2 : public QDialog
 {
 	Q_OBJECT
 public:
+	class walletOpts
+	{
+	public:
+		struct status
+		{
+			status() ;
+			bool gnomeWallet;
+			bool kdeWallet ;
+			bool osxkeychain ;
+			bool windows_dpapi ;
+			bool internal ;
+		} ;
+		walletOpts() ;
+		void setActive( favorites2 * ) ;
+		void setInactive() ;
+		void checkAvaibale() ;
+		template< typename Function >
+		void getAvailableWallets( const Function& function )
+		{
+			function( utility::asConst( m_walletOpts.m_status ) ) ;
+		}
+	private:
+		void getStatus() ;
+		void setStatus() ;
+		bool m_set = false ;
+		favorites2::walletOpts::status m_status ;
+		favorites2 * m_parent ;
+	} ;
+
+	template< typename Function >
+	static void getAvailableWallets( const Function& function )
+	{
+		m_walletOpts.getAvailableWallets( function ) ;
+	}
+
+	static void checkAvailableWallets() ;
+
+	static QString encodeKeyKeyFile( const QString&,const QString& ) ;
+
+	class credentials
+	{
+	public:
+		credentials()
+		{
+		}
+		credentials( QString p,QString f ) :
+			m_password( std::move( p ) ),m_keyFilePath( std::move( f ) )
+		{
+		}
+		bool hasBoth() const
+		{
+			return !m_password.isEmpty() && !m_keyFilePath.isEmpty() ;
+		}
+		bool hasKeyOnly() const
+		{
+			return !m_password.isEmpty() && m_keyFilePath.isEmpty() ;
+		}
+		bool hasKeyFileOnly() const
+		{
+			return m_password.isEmpty() && !m_keyFilePath.isEmpty() ;
+		}
+		const QString& password() const
+		{
+			return m_password ;
+		}
+		const QString& keyFilePath() const
+		{
+			return m_keyFilePath ;
+		}
+	private:
+		QString m_password ;
+		QString m_keyFilePath ;
+	};
+
+	static favorites2::credentials decodeKeyKeyFile( const QString& ) ;
+
 	static Task::future< void >& deleteKey( secrets::wallet&,const QString& id ) ;
 
 	static Task::future< bool >& addKey( secrets::wallet&,
@@ -81,7 +157,7 @@ private :
 	void setMenu( QMenu& ) ;
 	void folderPath( void ) ;
 	void filePath( void ) ;
-	void mountPointPath( void ) ;
+	void mountPointPath() ;
 	void currentItemChanged( QTableWidgetItem * current,QTableWidgetItem * previous ) ;
 	void itemClicked( QTableWidgetItem * current,bool ) ;
 	void itemClicked( QTableWidgetItem * current ) ;
@@ -90,7 +166,7 @@ private :
 	void setVolumeProperties( utility2::result_ref< const favorites::entry& > e ) ;
 	void clearVolumeProperties() ;
 	void ShowUI() ;
-	void HideUI( void ) ;
+	void HideUI() ;
 	void checkFavoritesConsistency() ;
 	void setUiLikeSsh( const QString& cipherPath,const engines::engine& engine ) ;
 	void setDefaultUI( const engines::engine& ) ;
@@ -114,9 +190,12 @@ private :
 	std::function< void() > m_function ;
 	const engines::engine& m_engine ;
 	QString m_cipherPath ;
+	QString m_keyFilePath ;
 
-	class wallet{
+	static walletOpts m_walletOpts ;
 
+	class wallet
+	{
 	public:
 		void operator=( secrets::wallet s )
 		{
@@ -153,6 +232,30 @@ private :
 		std::unique_ptr< w > m_w = nullptr ;
 
 	} m_wallet ;
+
+	class passwordSources
+	{
+	public:
+		passwordSources() ;
+		QStringList listTranslated() const ;
+		QStringList listUntranslated() const ;
+		const QString& getTranslated( const QString& ) const ;
+		const QString& getUntranslated( const QString& ) const ;
+	private:
+		struct pair
+		{
+			pair( QString t,QString u ) :
+				translated( std::move( t ) ),untranslated( std::move( u ) )
+			{
+			}
+			QString translated ;
+			QString untranslated ;
+		} ;
+		std::vector< pair > m_sources ;
+		QString m_empty ;
+	};
+
+	passwordSources m_passwordSources ;
 } ;
 
 #endif // FAVORITES2_H

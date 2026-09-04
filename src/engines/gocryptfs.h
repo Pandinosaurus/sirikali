@@ -24,13 +24,37 @@ class gocryptfs : public engines::engine
 public:
 	gocryptfs() ;
 
+	explicit gocryptfs( const QString& ) ;
+
+	bool updatable( bool ) const override ;
+
+	void deleteBinPath( const QString& ) const override ;
+
+	void setUpBinary( bool,QStringList&,const QString& ) const override ;
+
+	bool enginesMatch( const QString& ) const override ;
+
+	bool onlineArchiveFileName( const QString& ) const override ;
+
+	void removeExtraFiles( const QString& ) const override ;
+
+	QString installedVersionHack( const QString& ) const override ;
+
+	void setInstalledVersionHack( const QString&,const QString& ) const override ;
+
 	void updateOptions( engines::engine::cmdArgsList&,bool ) const override ;
 
 	engines::engine::status errorCode( const QString& e,const QString& err,int s ) const override ;
 
+	engine::engine::error errorCode( const QString& e ) const override ;
+
 	void GUICreateOptions( const engines::engine::createGUIOptions& ) const override ;
 
 	void GUIMountOptions( const engines::engine::mountGUIOptions& ) const override ;
+
+	void parseVolumeProperties( QString& ) const override ;
+
+	void updateExecutablePaths() const override ;
 
 	void aboutToExit() const override ;
 
@@ -42,14 +66,10 @@ public:
 		      const engines::engine::cmdArgsList& args,
 		      bool create ) const override ;
 private:
-#ifdef Q_OS_WIN
-#else
-	const engines::versionGreaterOrEqual m_version_has_error_codes ;
-#endif
-	QString m_sirikaliCppcryptfsExe ;
-	QString m_cppcryptfsctl ;
-	QString m_cppcryptfs ;
-	QStringList m_windowsUnmountCommand ;
+	mutable QString m_sirikaliCppcryptfsExe ;
+	mutable QString m_cppcryptfsctl ;
+	mutable QString m_cppcryptfs ;
+	mutable QStringList m_windowsUnmountCommand ;
 	mutable QString m_cppcryptfsPid ;
 	QString getcppcryptfsPid() const ;
 } ;

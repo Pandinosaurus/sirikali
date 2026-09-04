@@ -20,18 +20,19 @@
 
 #include "checkforupdates.h"
 
-#if HAS_NETWORK_SUPPORT
-
 #include "settings.h"
 #include "json_parser.hpp"
 #include "engines.h"
 
-checkUpdates::checkUpdates( QWidget * widget,checkforupdateswindow::functions ff ) :
-	m_widget( widget ),
+#include "sirikali.h"
+
+checkUpdates::checkUpdates( sirikali * parent ) :
+	m_widget( parent ),
 	m_timeOut( settings::instance().networkTimeOut() * 1000 ),
 	m_network( m_timeOut ),
 	m_running( false ),
-	m_functions( std::move( ff ) )
+	m_basePath( engines::defaultBinPath() ),
+	m_sirikali( *parent )
 {
 	m_networkRequest.setRawHeader( "Host","api.github.com" ) ;
 	m_networkRequest.setRawHeader( "Accept-Encoding","text/plain" ) ;
@@ -47,88 +48,92 @@ checkUpdates::checkUpdates( QWidget * widget,checkforupdateswindow::functions ff
 			m_backends.emplace_back( it ) ;
 		}
 	}
+
+	m_backendsInUse = &m_backends ;
 }
 
-void checkUpdates::check( bool e )
+void checkUpdates::check()
 {
-	m_autocheck = e ;
-
-	m_results.clear() ;
-
 	m_running = true ;
+
+	auto& m = checkforupdateswindow::instance( m_sirikali,m_network ) ;
+
+	connect( this,&checkUpdates::update,&m,&checkforupdateswindow::add ) ;
+	connect( this,&checkUpdates::done,&m,&checkforupdateswindow::doneUpdating ) ;
+
+	connect( &m,&checkforupdateswindow::closed,[ this ](){
+
+		if( m_backendsInUse == &m_backendsInstallable ){
+
+			emit doneCheckingUpdates() ;
+		}
+
+		m_backendsInUse = &m_backends ;
+	} ) ;
+
+	m.show() ;
+
+	m_sirikali.disableAll() ;
 
 	this->checkForUpdate() ;
 }
 
-void checkUpdates::run( bool e )
+void checkUpdates::checkIfInstalled()
 {
-	if( m_running == false ){
+	auto& s = settings::instance() ;
 
-		if( e ){
+	auto m = s.internallyManageBackEnds() ;
 
-			if( settings::instance().autoCheck() ){
+	QStringList apps ;
 
-				this->check( e ) ;
+	for( const auto& it : m_backends ){
+
+		it->setUpBinary( m,apps,m_basePath ) ;
+	}
+
+	if( apps.isEmpty() ){
+
+		emit doneCheckingUpdates() ;
+	}else{
+		for( const auto& it : utility::asConst( m_backends ) ){
+
+			for( const auto& xt : utility::asConst( apps ) ){
+
+				if( it->enginesMatch( xt ) && it->updatable( m ) ){
+
+					m_backendsInstallable.emplace_back( it ) ;
+				}
 			}
+		}
+
+		if( m_backendsInstallable.size() ){
+
+			m_backendsInUse = &m_backendsInstallable ;
+
+			this->run() ;
 		}else{
-			this->check( e ) ;
+			emit doneCheckingUpdates() ;
 		}
 	}
 }
 
-void checkUpdates::showResult()
+void checkUpdates::run()
 {
-	m_running = false ;
+	if( !m_running ){
 
-	bool show = false ;
-
-	auto _tr = []( const QStringList& l ){
-
-		auto s = QObject::tr( "\"%1\" Installed Version Is : %2.<br>Latest Version Is : %3.<br>" ) ;
-		return s.arg( l.at( 0 ),l.at( 1 ),l.at( 2 ) ) ;
-	} ;
-
-	auto e = "<!DOCTYPE html><html><body><center>" + _tr( m_results.at( 0 ) ) ;
-
-	for( int i = 1 ; i < m_results.size() ; i++ ){
-
-		const auto& it = m_results.at( i ) ;
-
-		e += "<br>" + _tr( it ) ;
-
-		const auto& a = it.at( 1 ) ;
-
-		const auto& b = it.at( 2 ) ;
-
-		if( a != "N/A" && b != "N/A" ){
-
-			if( a != b ){
-
-				show = true ;
-			}
-		}
-	}
-
-	e += "</center></body></html>" ;
-
-	if( m_autocheck ){
-
-		if( show ){
-
-			m_functions.first() ;
-
-			checkforupdateswindow::instance( m_widget,m_functions ).ShowUI( e ) ;
-		}
-	}else{
-		m_functions.first() ;
-
-		checkforupdateswindow::instance( m_widget,m_functions ).ShowUI( e ) ;
+		this->check() ;
 	}
 }
 
 QString checkUpdates::InstalledVersion( const engines::engine& e )
 {
-	if( e.unknown() ){
+	auto m = e.installedVersionHack( m_basePath ) ;
+
+	if( !m.isEmpty() ){
+
+		return m ;
+
+	}else if( e.unknown() ){
 
 		return utility::SiriKaliVersion() ;
 	}else{
@@ -143,7 +148,7 @@ QString checkUpdates::InstalledVersion( const engines::engine& e )
 	}
 }
 
-QString checkUpdates::latestVersion( const QByteArray& data )
+checkUpdates::versionData checkUpdates::latestVersion( const QByteArray& data )
 {
 	auto _found_release = []( const QString& e ){
 
@@ -166,76 +171,92 @@ QString checkUpdates::latestVersion( const QByteArray& data )
 		return true ;
 	} ;
 
-	SirikaliJson json( data,[]( const QString& e ){ utility::debug() << e ; } ) ;
+	QJsonParseError error ;
+	auto doc = QJsonDocument::fromJson( data,&error ) ;
 
-	for( auto& it : json.getTags( "tag_name" ) ){
+	if( error.error == QJsonParseError::NoError ){
 
-		it.remove( 'v' ) ;
-		it.remove( "sshfs-" ) ;
+		const auto array = doc.array() ;
 
-		if( _found_release( it ) ){
+		for( const auto& it : array ){
 
-			return it ;
+			auto obj = it.toObject() ;
+
+			auto tag_name = obj.value( "tag_name" ).toString() ;
+
+			tag_name.remove( 'v' ) ;
+			tag_name.remove( "sshfs-" ) ;
+
+			if( _found_release( tag_name ) ){
+
+				return { tag_name,std::move( obj ) } ;
+			}
 		}
 	}
 
-	return "N/A" ;
+	return { "N/A",QJsonObject() } ;
 }
 
 void checkUpdates::checkForUpdate( size_t position )
 {
-	if( position == m_backends.size() ){
+	if( position == m_backendsInUse->size() ){
 
-		this->showResult() ;
+		m_running = false ;
+
+		emit done( m_backendsInUse == &m_backendsInstallable ) ;
 	}else{
-		const auto& s = m_backends[ position ] ;
+		const auto& s = m_backendsInUse->data()[ position ] ;
 
 		position++ ;
 
 		auto f = this->InstalledVersion( s.get() ) ;
 
-		auto exeName = s->known() ? s->executableName() : "sirikali" ;
+		if( s->known() ){
 
-		if( f == "N/A" ){
-
-			m_results += { exeName,"N/A","N/A" } ;
-
-			this->checkForUpdate( position ) ;
-		}else {
-			if( s->known() ){
-
-				m_networkRequest.setUrl( QUrl( s->releaseURL() ) ) ;
-			}else{
-				m_networkRequest.setUrl( QUrl( "https://api.github.com/repos/mhogomchungu/sirikali/releases" ) ) ;
-			}
-
-			m_network.get( m_networkRequest,[ this,f,exeName,position ]( const utils::network::reply& reply ){
-
-				if( reply.success() ){
-
-					try{
-						m_results += { exeName,f,this->latestVersion( reply.data() ) } ;
-
-					}catch( ... ){
-
-						m_results += { exeName,f,"N/A" } ;
-					}
-
-				}else if( reply.timeOut() ){
-
-					auto s = QString::number( m_timeOut / 1000 ) ;
-					auto e = QObject::tr( "Network Request Failed To Respond Within %1 Seconds." ).arg( s ) ;
-
-					DialogMsg( m_widget ).ShowUIOK( QObject::tr( "ERROR" ),e ) ;
-					m_running = false ;
-				}else{
-
-				}
-
-				this->checkForUpdate( position ) ;
-			} ) ;
+			m_networkRequest.setUrl( QUrl( s->releaseURL() ) ) ;
+		}else{
+			m_networkRequest.setUrl( QUrl( "https://api.github.com/repos/mhogomchungu/sirikali/releases" ) ) ;
 		}
+
+		m_network.get( m_networkRequest,[ =,&s ]( const utils::network::reply& reply ){
+
+			this->networkReply( position,s.get(),f,reply ) ;
+		} ) ;
 	}
 }
 
-#endif
+void checkUpdates::networkReply( int position,
+				 const engines::engine& s,
+				 const QString& installedVersion,
+				 const utils::network::reply& reply )
+{
+	if( reply.success() ){
+
+		checkforupdateswindow::args args( s ) ;
+
+		auto m = this->latestVersion( reply.data() ) ;
+
+		args.installedVersion = installedVersion ;
+		args.onLineVersion    = m.version ;
+		args.data             = m.data ;
+
+		emit update( args ) ;
+
+	}else if( reply.timeOut() ){
+
+		checkforupdateswindow::args args( s ) ;
+
+		auto ss    = QString::number( m_timeOut / 1000 ) ;
+		args.error = QObject::tr( "Network Request Failed To Respond Within %1 Seconds." ).arg( ss ) ;
+
+		emit update( args ) ;
+	}else{
+		checkforupdateswindow::args args( s ) ;
+
+		args.error = reply.errorString() ;
+
+		emit update( args ) ;
+	}
+
+	this->checkForUpdate( position ) ;
+}

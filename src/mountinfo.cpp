@@ -103,13 +103,20 @@ static mountinfo::List _processManager_volumes()
 
 	for( const auto& e : m.mountOptions() ){
 
-		auto fs = "fuse." + e.subtype ;
+		auto subtype = e.subtype ;
 
-		auto mm = e.subtype + "@" + e.cipherFolder ;
+		if( subtype.isEmpty() ){
+
+			subtype = e.engine.name() ;
+		}
+
+		auto fs = "fuse." + subtype ;
+
+		auto mm = subtype + "@" + e.cipherFolder ;
 
 		volumeInfo aa{ std::move( mm ),e.mountPointPath,std::move( fs ),e.mode } ;
 
-		s.emplace_back( mountinfo::volumeEntry{ e.engine,std::move( aa ) } ) ;
+		s.emplace_back( e.engine,std::move( aa ) ) ;
 	}
 
 	return s ;
@@ -159,13 +166,13 @@ static volumeInfo::List _unlocked_volumes()
 {
 	auto a = [](){
 
-		if( utility::platformIsLinux() ){
-
-			return _linux_volumes() ;
-
-		}else if( utility::platformIsWindows() ){
+		if( utility::platformIsWindows() || utility::platformIsFlatPak() ){
 
 			return mountinfo::toVolumeInfoList( _processManager_volumes() ) ;
+
+		}else if( utility::platformIsLinux() ){
+
+			return _linux_volumes() ;
 		}else{
 			return _qt_volumes() ;
 		}
@@ -190,20 +197,19 @@ mountinfo::mountinfo( QObject * parent,
 	m_linuxMonitorExit( false ),
 	m_folderMonitorExit( false ),
 	m_oldMountList( _unlocked_volumes() ),
-	m_dbusMonitor( [ this ]( const QString& e ){ this->autoMount( e ) ; },m_debug )
+	m_dbusMonitor( [ this ]( const QString& e ){ emit this->autoMount( e ) ; },m_debug )
 {
-	processManager::get().updateVolumeList( [ this ](){
+	connect( this,&mountinfo::updateVolume,this,&mountinfo::volumeUpdate,Qt::QueuedConnection ) ;
 
-		this->updateVolume() ;
-	} ) ;
+	if( utility::platformIsWindows() || utility::platformIsFlatPak() ){
 
-	if( utility::platformIsLinux() ){
-
-		this->linuxMonitor() ;
-
-	}else if( utility::platformIsWindows() ){
+		processManager::get().updateVolumeList( this,&mountinfo::updateVolumeHandle ) ;
 
 		this->windowsMonitor() ;
+
+	}else if( utility::platformIsLinux() ){
+
+		this->linuxMonitor() ;
 	}else{
 		this->qtMonitor() ;
 	}
@@ -211,6 +217,11 @@ mountinfo::mountinfo( QObject * parent,
 
 mountinfo::~mountinfo()
 {
+}
+
+void mountinfo::updateVolumeHandle()
+{
+	emit this->updateVolume() ;
 }
 
 static mountinfo::volumeEntry _decode( const engines::engine& engine,volumeInfo&& e )
@@ -284,9 +295,13 @@ static bool _unlocked_by_this_user( const engines::engine& engine,
 				    volumeInfo& e,
 				    const QString& userID )
 {
-	const auto& m = e.mountOptions() ;
+	if( utility::platformIsFlatPak() ){
 
-	if( utility::platformIsLinux() ){
+		return true ;
+
+	}else if( utility::platformIsLinux() ){
+
+		const auto& m = e.mountOptions() ;
 
 		if( m.contains( "user_id=" ) ){
 
@@ -319,11 +334,8 @@ Task::future< mountinfo::List >& mountinfo::unlockedVolumes()
 
 		mountinfo::List e ;
 
-		if( utility::platformIsWindows() ){
+		if( utility::platformIsWindows() || utility::platformIsFlatPak() ){
 
-			/*
-			 *  All engines in windows run in the foreground
-			 */
 			for( auto&& it : m ){
 
 				e.emplace_back( _decode( it.engine,std::move( it.vInfo ) ) ) ;
@@ -399,7 +411,7 @@ void mountinfo::volumeUpdate()
 
 	if( m_announceEvents ){
 
-		this->pbUpdate() ;
+		emit this->pbUpdate() ;
 
 		if( _volumeWasMounted() ){
 
@@ -407,31 +419,13 @@ void mountinfo::volumeUpdate()
 
 				if( _mountedVolume( it.cipherPath() ) ){
 
-					this->autoMount( it.mountPoint() ) ;
+					emit this->autoMount( it.mountPoint() ) ;
 				}
 			}
 		}
 	}
 
 	m_oldMountList = std::move( m_newMountList ) ;
-}
-
-void mountinfo::updateVolume()
-{
-	QMetaObject::invokeMethod( this,"volumeUpdate",Qt::QueuedConnection ) ;
-}
-
-void mountinfo::pbUpdate()
-{
-	QMetaObject::invokeMethod( m_parent,"pbUpdate",Qt::QueuedConnection ) ;
-}
-
-void mountinfo::autoMount( const QString& e )
-{
-	QMetaObject::invokeMethod( m_parent,
-				   "autoMountFavoritesOnAvailable",
-				   Qt::QueuedConnection,
-				   Q_ARG( QString,e ) ) ;
 }
 
 void mountinfo::announceEvents( bool s )
@@ -445,7 +439,10 @@ void mountinfo::linuxMonitor()
 
 		QFile s( "/proc/self/mountinfo" ) ;
 
-		s.open( QIODevice::ReadOnly ) ;
+		if( !s.open( QIODevice::ReadOnly ) ){
+
+			m_debug( "Warning: Failed to Open \"/proc/self/mountinfo\"" ) ;
+		}
 
 		eventsMonitor::pollMonitor( s.handle() ).poll( [ this ]( int a ){
 
@@ -455,7 +452,7 @@ void mountinfo::linuxMonitor()
 
 			}else if( a > 0 ){
 
-				this->updateVolume() ;
+				emit this->updateVolume() ;
 
 			}else if( a == 0 ){
 
@@ -507,7 +504,7 @@ void mountinfo::linuxMonitor()
 				}else{
 					entries.created( [ this ]( const QString& e ){
 
-						this->autoMount( e ) ;
+						emit this->autoMount( e ) ;
 					} ) ;
 				}
 
@@ -547,7 +544,7 @@ void mountinfo::pollForUpdates()
 
 				if( now != previous ){
 
-					this->updateVolume() ;
+					emit this->updateVolume() ;
 				}
 
 				previous = std::move( now ) ;

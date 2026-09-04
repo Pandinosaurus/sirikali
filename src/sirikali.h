@@ -28,6 +28,7 @@
 #include <QVector>
 #include <QSettings>
 #include <QApplication>
+#include <QMainWindow>
 
 #include "volumeinfo.h"
 #include "utility.h"
@@ -59,11 +60,7 @@ class miniSiriKali : public QObject
 {
 	Q_OBJECT
 public:
-	miniSiriKali( std::function< int( secrets& ) > function ) :
-		m_function( std::move( function ) ),
-		m_secrets( nullptr )
-	{
-	}
+	miniSiriKali( std::function< int( secrets& ) > function ) ;
 private slots :
 	void start() ;
 private:
@@ -72,7 +69,7 @@ private:
 	secrets m_secrets ;
 } ;
 
-class sirikali : public QWidget
+class sirikali : public QMainWindow
 {
 	Q_OBJECT
 public:
@@ -81,54 +78,62 @@ public:
 
 	sirikali( const QStringList&,QApplication& ) ;
 	void start() ;
+	void showTrayIcon( bool ) ;
+	void updateLanguage( QAction * ac ) ;
+	void enableAllAndSetFileManager() ;
+	void enableAll() ;
+	void disableAll() ;
 	~sirikali() ;
-private slots:
-	void addToFavorites( void ) ;
-	void createbackendwindow( void ) ;
-	void showDebugWindow( void ) ;
-	void configurationOptions( void ) ;
-	void FAQ( void ) ;
-	void hideWindow( void ) ;
-	void setUpApp( const QString& ) ;
-	void autoUpdateCheck( void ) ;
-	void volumeProperties() ;
-	void genericVolumeProperties( void ) ;
-	void closeApplication( int = 0,const QString& = QString() ) ;
+private:
+	void genericVolumeProperties() ;
 	void unlockVolume( bool ) ;
 	void startGUI( const QString& ) ;
-	void startGUI( const QString&,bool ) ;
+	void startGUIx( const QString& ) ;
 	void autoMount( const QString& ) ;
-	void defaultButton( void ) ;
-	void itemClicked( QTableWidgetItem * ) ;
-	void pbUpdate( void ) ;
-	void updateList( void ) ;
-	void createVolume( QAction * = nullptr ) ;
-	void unMountAll( void ) ;
-	void emergencyShutDown( void ) ;
-	void unMountAllAndQuit( void ) ;
-	void pbUmount( void ) ;
-	void slotTrayClicked( QSystemTrayIcon::ActivationReason = QSystemTrayIcon::Trigger ) ;
-	void slotCurrentItemChanged( QTableWidgetItem *,QTableWidgetItem * ) ;
-	void enableAll( void ) ;
-	void slotOpenFolder( void ) ;
-	void openWith( void ) ;
-	void slotOpenParentFolder( void ) ;
-	void slotOpenSharedFolder( void ) ;
+	void updateList() ;
+	void emergencyShutDown() ;
+	void slotOpenParentFolder() ;
+	void slotOpenSharedFolder() ;
 	void addEntryToTable( const QStringList& ) ;
 	void addEntryToTable( const volumeInfo& ) ;
 	void removeEntryFromTable( QString ) ;
-	void showFavorites( void ) ;
-	void favoriteClicked( QAction * ) ;
-	void favoriteClicked() ;
+	void showFavorites() ;
+	void showFavoriteFromShortCut() ;
 	void openMountPointPath( const QString& ) ;
-	void licenseInfo( void ) ;
-	void updateCheck( void ) ;
+	void openWith() ;
+	void slotOpenFolder() ;
+	void volumeProperties() ;
+	void addToFavorites() ;
+	void defaultButton() ;
+	void favoriteClicked() ;
+	void hideWindow() ;
+	void createbackendwindow() ;
+	void showDebugWindow() ;
+	void slotCurrentItemChanged( QTableWidgetItem *,QTableWidgetItem * ) ;
+	void setUpApp( const QString& ) ;
+	void unMountAll() ;
+	bool unMountAllBeforeQuitting() ;
 	void autoMountFavoritesOnAvailable( QString ) ;
-private:
+
+	void favoriteClickedA( QAction * ) ;
+	void updateCheck() ;
+	void closeApplication( int = 0,const QString& = QString() ) ;
+	void closeApp() ;
+	void FAQ() ;
+	void licenseInfo() ;
+	void configurationOptions() ;
+	void unMountAllAndQuit() ;
+	void pbUmount() ;
+	void pbUpdate() ;
+	void itemClicked( QTableWidgetItem * ) ;
+
+	void trayClicked( QSystemTrayIcon::ActivationReason ) ;
+	void trayClickedq() ;
+	void createVolume( QAction * ) ;
+
+	void setCreateMenu() ;
 	void mountAll() ;
 	void mountFavorite( const QString& ) ;
-
-	configOptions::functions configOption() ;
 
 	void showTrayIcon() ;
 
@@ -143,10 +148,14 @@ private:
 
 	QString resolveFavoriteMountPoint( const QString& ) ;
 
-	QFont getSystemVolumeFont( void ) ;
+	QFont getSystemVolumeFont() ;
 
-	void updateFavoritesInContextMenu( void ) ;
+	bool attachParent() ;
+
+	void updateFavoritesInContextMenu() ;
+	void updateAgainFavoritesInContextMenu() ;
 	void runIntervalCustomCommand( const QString& ) ;
+	void runIntervalCustomCommand( const QString&,const QStringList&,const QByteArray& ) ;
 	void updateVolumeList( const mountinfo::List&,bool enableAll = true ) ;
 	void openMountPoint( const QString& ) ;
 	void setLocalizationLanguage( bool ) ;
@@ -154,18 +163,17 @@ private:
 	void dropEvent( QDropEvent * ) ;
 	void showContextMenu( QTableWidgetItem *,bool ) ;
 	void updateList( const volumeInfo& ) ;
-	void setUpAppMenu( void ) ;
-	void disableAll( void ) ;
+	void setUpAppMenu() ;
 	void closeEvent( QCloseEvent * e ) ;
-	void setUpFont( void ) ;
-	void setUpShortCuts( void ) ;
-	void showMainWindow( void ) ;
+	void setUpFont() ;
+	void setUpShortCuts() ;
+	void showMainWindow() ;
 	void raiseWindow( const QString& = QString() ) ;
 	void autoUnlockVolumes( const mountinfo::List&,bool autoSetAutoMount = false ) ;
-	keyDialog::volumeList autoUnlockVolumes( favorites::volumeList,
-						 bool autoOpenFolderOnMount = false,
-						 bool skipUnknown = false,
-						 bool autoSetAutoMount = false ) ;
+	void autoUnlockVolumes( favorites::volumeList,
+				bool autoOpenFolderOnMount = false,
+				bool skipUnknown = false,
+				bool autoSetAutoMount = false ) ;
 
 	template< typename ... Args >
 	void autoUnlockAutoMount( favorites::volEntry&& vEntry,Args&& ... args )
@@ -180,13 +188,36 @@ private:
 	template< typename ... Args >
 	void autoUnlockAutoMount( favorites::volumeList&& volList,Args&& ... args )
 	{
-		auto mm = this->autoUnlockVolumes( std::move( volList ),
-						   std::forward< Args >( args ) ... ) ;
-
-		this->mountMultipleVolumes( std::move( mm ) ) ;
+		this->autoUnlockVolumes( std::move( volList ),std::forward< Args >( args ) ... ) ;
 	}
 
-	struct mountedEntry{
+	class wallet
+	{
+	public:
+		wallet()
+		{
+		}
+		wallet( secrets::wallet& s ) : m_wallet( &s )
+		{
+		}
+		bool valid() const
+		{
+			return m_wallet ;
+		}
+		secrets::wallet& get() const
+		{
+			return *m_wallet ;
+		}
+	private:
+		secrets::wallet * m_wallet = nullptr ;
+	} ;
+
+	void autoUnlockVolumesR( sirikali::wallet,
+				 keyDialog::volumeList& ss,
+				 bool autoOpenFolderOnMount,
+				 bool autoSetAutoMount ) ;
+	struct mountedEntry
+	{
 		const QString& cipherPath ;
 		const QString& mountPoint ;
 		const QString& volumeType ;
@@ -207,6 +238,53 @@ private:
 
 			function( { a,b,c } ) ;
 		}
+	}
+
+	using cbVoid = void( sirikali::* )() ;
+	using cbQAct = void( sirikali::* )( QAction * ) ;
+
+	QAction * addAction( const QString& e,const char * z,cbVoid s )
+	{
+		auto ac = new QAction( e,this ) ;
+
+		m_actionPair.emplace_back( ac,z ) ;
+
+		ac->setFont( this->font() ) ;
+
+		connect( ac,&QAction::triggered,this,s ) ;
+
+		return ac ;
+	}
+
+	void addAction( QMenu& m,const QString& txt,sirikali::cbVoid s )
+	{
+		connect( m.addAction( txt ),&QAction::triggered,this,s ) ;
+	}
+
+	QAction * addAction( std::initializer_list< QKeySequence > s,sirikali::cbVoid m )
+	{
+		auto ac = new QAction( this ) ;
+
+		ac->setShortcuts( s ) ;
+
+		connect( ac,&QAction::triggered,this,m ) ;
+
+		return ac ;
+	}
+
+	QMenu * addMenu( QMenu * m,const QString& r,const char * z,cbQAct t,cbVoid s )
+	{
+		auto e = m->addMenu( r ) ;
+
+		m_menuPair.emplace_back( e,z ) ;
+
+		e->setFont( this->font() ) ;
+
+		connect( e,&QMenu::triggered,this,t ) ;
+
+		connect( e,&QMenu::aboutToShow,this,s ) ;
+
+		return e ;
 	}
 
 	engines::engine::cmdStatus unMountVolume( const sirikali::mountedEntry&,bool = false ) ;
@@ -238,9 +316,9 @@ private:
 	bool m_startHidden ;
 	bool m_autoOpenFolderOnMount ;
 	bool m_emergencyShuttingDown = false ;
-
+	bool m_initWallet = true ;
 	QString m_sharedFolderPath ;
-	QString m_folderOpener ;
+	cmd::exe m_folderOpener ;
 
 	int m_exitStatus = 0 ;
 
@@ -304,7 +382,11 @@ class starter : public QObject
 public:
 	starter( const QStringList& args,QApplication& app ) : m_args( args ),m_app( app )
 	{
-		QMetaObject::invokeMethod( this,"start",Qt::QueuedConnection ) ;
+		auto m = Qt::QueuedConnection ;
+
+		connect( this,&starter::getStarted,this,&starter::start,m ) ;
+
+		emit this->getStarted() ;
 	}
 	~starter()
 	{
@@ -313,13 +395,10 @@ public:
 	{
 		return m_app.exec() ;
 	}
-private slots :
-	void start()
-	{
-		m_sirikali = std::make_unique< sirikali >( m_args,m_app ) ;
-		m_sirikali->start() ;
-	}
+signals:
+	void getStarted() ;
 private:
+	void start() ;
 	const QStringList& m_args ;
 	QApplication& m_app ;
 	std::unique_ptr< sirikali > m_sirikali ;

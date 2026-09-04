@@ -67,6 +67,22 @@ static QString _configPath()
 #endif
 }
 
+static QString _documentsPath()
+{
+#if QT_VERSION >= QT_VERSION_CHECK( 5,6,0 )
+
+	auto s = QStandardPaths::standardLocations( QStandardPaths::DocumentsLocation ) ;
+
+	if( s.isEmpty() ){
+
+		return QDir::homePath() + "/Documents" ;
+	}else{
+		return s.first() ;
+	}
+#else
+	return QDir::homePath() + "/Documents" ;
+#endif
+}
 static std::unique_ptr< QSettings > _set_config( const QString& path,bool createFolders )
 {
 	if( createFolders ){
@@ -99,7 +115,7 @@ std::unique_ptr< QSettings > lxqt_qsettings()
 }
 
 static std::unique_ptr< QSettings > _init()
-{
+{	
 	if( settings::portableVersion() ){
 
 		return _set_config( settings::portableVersionConfigPath(),true ) ;
@@ -152,12 +168,56 @@ settings::settings() :
 {
 }
 
+bool settings::flatpakUpdated()
+{
+	static bool updated = [ this ](){
+
+		auto id = "FlatpakInstanceId" ;
+
+		auto& m = this->flatpakIntance().commitId() ;
+
+		if( m_settings.contains( id ) ){
+
+			auto e = m_settings.value( id ).toString() ;
+
+			if( e == m ){
+
+				return false ;
+			}else{
+				m_settings.setValue( id,m ) ;
+				return true ;
+			}
+		}else{
+			m_settings.setValue( id,m ) ;
+			return true ;
+		}
+	}() ;
+
+	return updated ;
+}
+
+bool settings::showSystemTray()
+{
+	if( !m_settings.contains( "ShowSystemTray" ) ){
+
+		m_settings.setValue( "ShowSystemTray",true ) ;
+	}
+
+	return m_settings.value( "ShowSystemTray" ).toBool() ;
+}
+
+void settings::setShowSystemTray( bool s )
+{
+	m_settings.setValue( "ShowSystemTray",s ) ;
+}
+
 bool settings::portableVersion()
 {
 	if( utility::platformIsWindows() ){
 
+		auto m = SiriKali::Windows::applicationDirPath() ;
 		auto a = QFile::exists( settings::portableVersionConfigPath() ) ;
-		auto b = QFile::exists( QDir::currentPath() + "/sirikali.exe" ) ;
+		auto b = QFile::exists( m + "/sirikali.exe" ) ;
 
 		return a && b ;
 	}else{
@@ -167,7 +227,12 @@ bool settings::portableVersion()
 
 QString settings::portableVersionConfigPath()
 {
-	return QDir::currentPath() + "/local" ;
+	return SiriKali::Windows::applicationDirPath() + "/local" ;
+}
+
+const settings::flatpakRuntimeOptions& settings::flatpakIntance()
+{
+	return m_flatpakRuntimeOptions ;
 }
 
 bool settings::showCipherFolderAndMountPathInFavoritesList()
@@ -186,7 +251,12 @@ QString settings::homePath()
 
 		return QDir::homePath() + "/Desktop" ;
 	}else{
-		return QDir::homePath() ;
+		if( utility::platformIsFlatPak() ){
+
+			return _documentsPath() ;
+		}else{
+			return QDir::homePath() ;
+		}
 	}
 }
 
@@ -537,7 +607,9 @@ void settings::scaleGUI()
 
 	if( this->enableHighDpiScaling() ){
 
-		QApplication::setAttribute( Qt::AA_EnableHighDpiScaling ) ;
+		#if QT_VERSION < QT_VERSION_CHECK( 6,0,0 )
+			QApplication::setAttribute( Qt::AA_EnableHighDpiScaling ) ;
+		#endif
 	}
 
 	auto a = this->enabledHighDpiScalingFactor() ;
@@ -550,9 +622,50 @@ void settings::scaleGUI()
 #endif
 }
 
-QString settings::fileManager()
+cmd::exe settings::fileManager()
 {
-	if( m_settings.contains( "FileManagerOpener" ) ){
+	if( utility::platformIsWindows() ){
+
+		auto e = m_settings.value( "WindowsFileManagerOpener" ).toString() ;
+
+		if( e.isEmpty() ){
+
+			this->setFileManager( QString() ) ;
+
+			return m_settings.value( "WindowsFileManagerOpener" ).toString() ;
+		}else{
+			return e ;
+		}
+
+	}else if( utility::platformIsFlatPak() ){
+
+		if( !m_settings.contains( "Xdg-Open" ) ){
+
+			QProcess exe ;
+
+			exe.start( "flatpak-spawn",{ "--host","which","xdg-open" } ) ;
+
+			exe.waitForFinished() ;
+
+			auto m = exe.readAllStandardOutput().trimmed() ;
+
+			QStringList s{ "flatpak-spawn","--host",m } ;
+
+			m_settings.setValue( "Xdg-Open",s ) ;
+		}
+
+		auto m = m_settings.value( "Xdg-Open" ).toStringList() ;
+
+		if( m.size() ){
+
+			auto exe = m.takeAt( 0 ) ;
+
+			return { exe,m } ;
+		}else{
+			return {} ;
+		}
+
+	}else if( m_settings.contains( "FileManagerOpener" ) ){
 
 		auto e = m_settings.value( "FileManagerOpener" ).toString() ;
 
@@ -596,7 +709,7 @@ static void _set_mount_default( settings& s )
 
 	if( utility::platformIsWindows() ){
 
-		m.setValue( "MountPrefix",s.homePath() + "/Desktop" ) ;
+		m.setValue( "MountPrefix",s.homePath() ) ;
 	}else{
 		m.setValue( "MountPrefix",s.homePath() + "/.SiriKali" ) ;
 	}
@@ -641,7 +754,12 @@ QString settings::ConfigLocation()
 
 	if( !m_settings.contains( "AppDataLocation" ) ){
 
-		auto New = QStandardPaths::standardLocations( QStandardPaths::AppDataLocation ) ;
+		#if QT_VERSION > QT_VERSION_CHECK( 5,4,0 )
+			auto New = QStandardPaths::standardLocations( QStandardPaths::AppDataLocation ) ;
+		#else
+			QStringList New ;
+		#endif
+
 		auto old = QStandardPaths::standardLocations( QStandardPaths::ConfigLocation ) ;
 
 		QString newPath ;
@@ -774,81 +892,111 @@ int settings::delayBeforeAutoMountAtStartup()
 	return m_settings.value( "DelayBeforeAutoMountAtStartup" ).toInt() ;
 }
 
+bool settings::internallyManageBackEnds()
+{
+	if( !m_settings.contains( "InternallyManageBackEnds" ) ){
+
+		if( utility::platformIsWindows() ){
+
+			m_settings.setValue( "InternallyManageBackEnds",false ) ;
+		}else{
+			m_settings.setValue( "InternallyManageBackEnds",false ) ;
+		}
+	}
+
+	return m_settings.value( "InternallyManageBackEnds" ).toBool() ;
+}
+
+void settings::setInternallyManageBackEnds( bool e )
+{
+	m_settings.setValue( "InternallyManageBackEnds",e ) ;
+}
+
+bool settings::cipherPathRepeats( const std::vector< favorites::entry >& favorites )
+{
+	for( auto it = favorites.begin() ; it != favorites.end() ; it++ ){
+
+		for( auto xt = it + 1 ; xt != favorites.end() ; xt++ ){
+
+			if( it->volumePath == xt->volumePath ){
+
+				return true ;
+			}
+		}
+	}
+
+	return false ;
+}
+
+bool settings::showCipherPathAndMountPath(bool cipherPathRepeatsInFavoritesList)
+{
+	if( cipherPathRepeatsInFavoritesList ){
+
+		return true ;
+	}else{
+		return this->showCipherFolderAndMountPathInFavoritesList() ;
+	}
+}
+
+bool settings::enableEntry( const QString& e )
+{
+	if( e.isEmpty() ){
+
+		return true ;
+
+	}else if( e.startsWith( "sshfs ",Qt::CaseInsensitive ) ){
+
+		return true ;
+	}else{
+		return QFile::exists( e ) ;
+	}
+}
+
+QAction * settings::addAaction( QMenu * m,const QString& e,const QString& s,const QString& u )
+{
+	auto ac = new QAction( m ) ;
+
+	ac->setText( e ) ;
+	ac->setObjectName( s ) ;
+	ac->setEnabled( this->enableEntry( u ) ) ;
+
+	return ac ;
+}
+
 bool settings::readFavorites( QMenu * m )
 {
 	m->clear() ;
 
-	auto _enable_entry = []( const QString& e ){
-
-		if( e.startsWith( "sshfs ",Qt::CaseInsensitive ) ){
-
-			return true ;
-		}else{
-			return QFile::exists( e ) ;
-		}
-	} ;
-
-	auto _add_action = [ m ]( const QString& e,const QString& s,bool enable = true ){
-
-		auto ac = new QAction( m ) ;
-
-		ac->setText( e ) ;
-		ac->setObjectName( s ) ;
-		ac->setEnabled( enable ) ;
-
-		return ac ;
-	} ;
-
-	m->addAction( _add_action( QObject::tr( "Manage Favorites" ),"Manage Favorites" ) ) ;
-	m->addAction( _add_action( QObject::tr( "Mount All" ),"Mount All" ) ) ;
+	m->addAction( this->addAaction( m,QObject::tr( "Manage Favorites" ),"Manage Favorites","" ) ) ;
+	m->addAction( this->addAaction( m,QObject::tr( "Mount All" ),"Mount All","" ) ) ;
 
 	m->addSeparator() ;
 
 	const auto& favorites = favorites::instance().readFavorites() ;
 
-	bool cipherPathRepeatsInFavoritesList = false ;
+	bool mm = this->cipherPathRepeats( favorites ) ;
 
-	for( auto it = favorites.begin() ; it != favorites.end() ; it++ ){
+	auto s = this->showCipherPathAndMountPath( mm ) ;
 
-		for( auto xt = it + 1 ; xt != favorites.end() ; xt++ ){
-
-			if( ( *it ).volumePath == ( *xt ).volumePath ){
-
-				cipherPathRepeatsInFavoritesList = true ;
-				break ;
-			}
-		}
-	}
-
-	auto _showCipherPathAndMountPath = [ & ](){
-
-		if( cipherPathRepeatsInFavoritesList ){
-
-			return true ;
-		}else{
-			return this->showCipherFolderAndMountPathInFavoritesList() ;
-		}
-	}() ;
-
-	if( _showCipherPathAndMountPath ){
+	if( s ){
 
 		for( const auto& it : favorites ){
 
-			const auto& e = it.volumePath + "\n" + it.mountPointPath ;
+			auto e = it.volumePathOpenMode() + "\n" + it.mountPointPath ;
 
-			m->addAction( _add_action( e,e,_enable_entry( it.volumePath ) ) ) ;
+			m->addAction( this->addAaction( m,e,e,it.volumePath ) ) ;
 			m->addSeparator() ;
 		}
 	}else{
 		for( const auto& it : favorites ){
 
-			const auto& e = it.volumePath ;
+			auto e = it.volumePathOpenMode() ;
 
-			m->addAction( _add_action( e,e,_enable_entry( it.volumePath ) ) ) ;
+			m->addAction( this->addAaction( m,e,e,it.volumePath ) ) ;
 		}
 	}
 
-	return _showCipherPathAndMountPath ;
+	return s ;
 }
 
 void settings::setDefaultMountPointPrefix( const QString& path )
@@ -869,7 +1017,7 @@ void settings::setLocalizationLanguage( bool translate,
 					QMenu * m,
 					settings::translator& translator )
 {
-	auto r = settings::instance().localizationLanguage().toLatin1() ;
+	auto r = settings::instance().localizationLanguage().toUtf8() ;
 
 	if( translate ){
 
@@ -919,14 +1067,16 @@ QString settings::localizationLanguagePath()
 		return QDir().currentPath() + "/translations" ;
 	}
 
+	if( utility::platformIsOSX() ){
+
+		auto m = QCoreApplication::applicationDirPath() ;
+
+		return m + + "/../Resources/translations" ;
+	}
+
 	if( !m_settings.contains( "TranslationsPath" ) ){
 
-		if( utility::platformIsOSX() ){
-
-			m_settings.setValue( "TranslationsPath",TRANSLATION_PATH ) ;
-		}else{
-			m_settings.setValue( "TranslationsPath",TRANSLATION_PATH ) ;
-		}
+		m_settings.setValue( "TranslationsPath",TRANSLATION_PATH ) ;
 	}
 
 	return m_settings.value( "TranslationsPath" ).toString() ;
@@ -968,7 +1118,16 @@ void settings::setStartMinimized( bool e )
 
 void settings::setFileManager( const QString& e )
 {
-	if( e.isEmpty() ){
+	if( utility::platformIsWindows() ){
+
+		if( e.isEmpty() ){
+
+			m_settings.setValue( "WindowsFileManagerOpener","Default" ) ;
+		}else{
+			m_settings.setValue( "WindowsFileManagerOpener",e ) ;
+		}
+
+	}else if( e.isEmpty() ){
 
 		m_settings.setValue( "FileManagerOpener",_file_manager() ) ;
 	}else{
@@ -1163,19 +1322,39 @@ bool settings::autoMountFavoritesOnStartUp()
 	}
 }
 
-bool settings::useDarkMode()
+void settings::setThemeType( settings::themeType m )
 {
-	if( !m_settings.contains( "UseDarkMode" ) ){
+	if( m == settings::themeType::light ){
 
-		m_settings.setValue( "UseDarkMode",false ) ;
+		m_settings.setValue( "ThemeType","light" ) ;
+
+	}else if( m == settings::themeType::dark ){
+
+		m_settings.setValue( "ThemeType","dark" ) ;
+	}else{
+		m_settings.setValue( "ThemeType","platformDefault" ) ;
 	}
-
-	return m_settings.value( "UseDarkMode" ).toBool() ;
 }
 
-void settings::useDarkMode( bool e )
+settings::themeType settings::getThemeType()
 {
-	m_settings.setValue( "UseDarkMode",e ) ;
+	if( !m_settings.contains( "ThemeType" ) ){
+
+		m_settings.setValue( "ThemeType","platformDefault" ) ;
+	}
+
+	auto m = m_settings.value( "ThemeType" ).toString() ;
+
+	if( m == "dark" ){
+
+		return settings::themeType::dark ;
+
+	}else if( m == "light" ){
+
+		return settings::themeType::light ;
+	}else{
+		return settings::themeType::platformDefault ;
+	}
 }
 
 void settings::autoMountFavoritesOnStartUp( bool e )
@@ -1515,6 +1694,7 @@ settings::translator::translator()
 	m_languages.emplace_back( QObject::tr( "French (FR)" ),"French (FR)","fr_FR" ) ;
 	m_languages.emplace_back( QObject::tr( "German (DE)" ),"German (DE)","de_DE" ) ;
 	m_languages.emplace_back( QObject::tr( "English (US)" ),"English (US)","en_US" ) ;
+	m_languages.emplace_back( QObject::tr( "Polish (PL)" ),"Polish (PL)","pl_PL" ) ;
 	m_languages.emplace_back( QObject::tr( "Swedish (SE)" ),"Swedish (SE)","sv_SE" ) ;
 	m_languages.emplace_back( QObject::tr( "Arabic (SA)" ) ,"Arabic (SA)","ar_SA" ) ;
 	m_languages.emplace_back( QObject::tr( "Spanish (MX)" ),"Spanish (MX)","es_MX" ) ;
@@ -1530,7 +1710,12 @@ void settings::translator::setLanguage( const QByteArray& e )
 
 		m_translator = new QTranslator() ;
 
-		m_translator->load( e.constData(),settings::instance().localizationLanguagePath() ) ;
+		auto m = m_translator->load( e.constData(),settings::instance().localizationLanguagePath() ) ;
+
+		if( !m ){
+
+			//????
+		}
 
 		return m_translator ;
 	}() ) ;
@@ -1599,4 +1784,36 @@ void settings::translator::clear()
 settings::translator::entry::entry( const QString& a,const char * b,const QString& c ) :
 	UINameTranslated( a ),UINameUnTranslated( b ),internalName( c )
 {
+}
+
+settings::flatpakRuntimeOptions::flatpakRuntimeOptions() :
+	m_settings( this->flatpkakInfoFile(),QSettings::IniFormat ),
+	m_globalBinPath( m_settings.value( "Instance/app-path" ).toString() ),
+	m_architecture( m_settings.value( "Instance/arch" ).toString() ),
+	m_commitId( m_settings.value( "Instance/app-commit" ).toString() ),
+	m_runtimePath( m_settings.value( "Instance/runtime-path" ).toString() ),
+	m_localBinPath( "/app/bin" )
+{
+	if( !m_globalBinPath.isEmpty() ){
+
+		m_globalBinPath += "/bin" ;
+	}
+}
+
+QString settings::flatpakRuntimeOptions::flatpkakInfoFile()
+{
+	if( QFile::exists( "/.flatpak-info" ) ){
+
+		return "/.flatpak-info" ;
+	}else{
+		auto m = qgetenv( "XDG_RUNTIME_DIR" ) ;
+
+		if( m.isEmpty() ){
+
+			//???
+			return {} ;
+		}else{
+			return m + "/flatpak-info" ;
+		}
+	}
 }

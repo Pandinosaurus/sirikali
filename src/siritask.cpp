@@ -60,6 +60,8 @@ static engines::engine::exe_args _cmd_args_1( QString e )
 
 			if( !b.isEmpty() ){
 
+				b = utility::cleanPath( b ) ;
+
 				return { b,utility::split( e.mid( i + 1 ),' ' ) } ;
 			}
 		}
@@ -90,7 +92,7 @@ static engines::engine::exe_args _cmd_args( const QString& e )
 
 	args.removeFirst() ;
 
-	return { std::move( exe ),std::move( args ) } ;
+	return { utility::cleanPath( exe ),std::move( args ) } ;
 }
 
 static void _run_command( const engines::engine::exe_args_const& exe,
@@ -108,8 +110,8 @@ static void _run_command( const engines::engine::exe_args_const& exe,
 	}
 }
 
-struct run_command{
-
+struct run_command
+{
 	const QString& command ;
 	const QString& cipherFolder ;
 	const QString& plainFolder ;
@@ -166,15 +168,22 @@ static engines::engine::cmdStatus _unmount( const engines::engine::unMount& e )
 		return { engines::engine::status::unknown,engine } ;
 	}
 
-	if( utility::platformIsWindows() || engine.runsInForeGround() ){
+	if( utility::platformIsFlatPak() || utility::platformIsWindows() || engine.runsInForeGround() ){
 
-		auto s = processManager::get().remove( e.mountPoint ) ;
+		auto s = processManager::get().remove( e.mountPoint,e.numberOfAttempts ) ;
 
 		if( s.success() ){
 
 			return { engines::engine::status::success,engine } ;
 		}else{
-			return { engines::engine::status::failedToUnMount,engine } ;
+			if( s.std_error().contains( "Device or resource busy" ) ){
+
+				using mm = engines::engine::status ;
+
+				return { mm::failedToUnMountMountPointStillInUse,engine } ;
+			}else{
+				return { engines::engine::status::failedToUnMount,engine } ;
+			}
 		}
 	}else{
 		if( engine.requiresPolkit() && !utility::enablePolkit() ){
@@ -221,16 +230,16 @@ engines::engine::cmdStatus siritask::encryptedFolderUnMount( const siritask::unm
 	}
 }
 
-struct cmd_args{
-
+struct cmd_args
+{
 	const engines::engine& engine ;
 	bool create ;
 	const engines::engine::cmdArgsList& opts ;
 	const QByteArray& password ;
 };
 
-struct run_task{
-
+struct run_task
+{
 	run_task( const engines::engine::args& args,const cmd_args& e ) :
 		args( args ),engine( e.engine ),password( e.password ),
 		opts( e.opts ),create( e.create )
@@ -245,7 +254,7 @@ struct run_task{
 
 static utility::Task _run_task_0( const run_task& e )
 {
-	if( utility::platformIsWindows() || e.engine.runsInForeGround() ){
+	if( utility::platformIsFlatPak() || utility::platformIsWindows() || e.engine.runsInForeGround() ){
 
 		return processManager::get().run( { e.create,e.args,e.opts,e.engine,e.password } ) ;
 	}else{
@@ -255,13 +264,9 @@ static utility::Task _run_task_0( const run_task& e )
 						 e.engine.likeSsh(),
 						 e.engine.allowLogging( e.args.cmd_args ) ) ;
 
-		return utility::Task( e.args.cmd,
-				      e.args.cmd_args,
-				      -1,
-				      s,
-				      e.password,
-				      [](){},
-				      opts ) ;
+		auto function = [ & ](){ e.engine.changeEnvironment( e.args.cmd,e.args.cmd_args ) ; } ;
+
+		return utility::Task( e.args.cmd,e.args.cmd_args,-1,s,e.password,function,opts ) ;
 	}
 }
 
@@ -476,18 +481,20 @@ static engines::engine::cmdStatus _create( const siritask::create& s )
 
 	auto e = _cmd( { engine,true,opt,engine.setPassword( opt.key ) } ) ;
 
-	if( e == engines::engine::status::success ){
+	if( e == engines::engine::status::success ){		
 
-		engine.updateVolumeList( opt ) ;
+		if( engine.autoMountsOnCreate() ){
 
-		if( !engine.autoMountsOnCreate() ){
-
+			engine.updateVolumeList( opt ) ;
+		}else{
 			engines::engineWithPaths s{ engine,opt.cipherFolder,opt.configFilePath } ;
 
 			auto e = siritask::encryptedFolderMount( { opt,true,s } ) ;
 
-			if( e != engines::engine::status::success ){
+			if( e == engines::engine::status::success ){
 
+				engine.updateVolumeList( opt ) ;
+			}else{
 				if( e.engine().backendRequireMountPath() ){
 
 					engine.deleteFolder( opt.cipherFolder ) ;
@@ -520,7 +527,7 @@ static void _warning( const QString& e )
 
 engines::engine::cmdStatus siritask::encryptedFolderCreate( const siritask::create& e )
 {
-	if( utility::platformIsWindows() ){
+	if( utility::platformIsWindows() || utility::platformIsFlatPak() ){
 
 		if( utility::miscOptions::instance().runningOnGUIThread() ){
 
@@ -588,7 +595,7 @@ engines::engine::cmdStatus siritask::encryptedFolderMount( const siritask::mount
 {
 	auto s = [ & ](){
 
-		if( utility::platformIsWindows() ){
+		if( utility::platformIsWindows() || utility::platformIsFlatPak() ){
 
 			if( utility::miscOptions::instance().runningOnGUIThread() ){
 

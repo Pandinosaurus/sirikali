@@ -51,12 +51,14 @@
 #include <vector>
 #include <type_traits>
 #include <chrono>
+#include <QCheckBox>
 
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
 
+#include "cmd.hpp"
 #include "task.hpp"
 #include "lxqt_wallet.h"
 #include "plugins.h"
@@ -64,7 +66,6 @@
 #include "utility2.h"
 #include "debugwindow.h"
 #include "version.h"
-
 #include <QObject>
 #include <QLabel>
 
@@ -191,7 +192,8 @@ namespace utility
 		QWidget * m_mainQWidget = nullptr ;
 	};
 
-	class logger{
+	class logger
+	{
 	public:
 		static QString starLine() ;
 		logger() ;
@@ -303,6 +305,7 @@ namespace utility
 	QStringList splitPreserveQuotes( const QString& e ) ;
 
 	bool platformIsLinux() ;
+	bool platformIsFlatPak() ;
 	bool platformIsOSX() ;
 	bool platformIsWindows() ;
 	bool platformIsNOTWindows() ;
@@ -348,8 +351,6 @@ namespace utility
 	bool folderNotEmpty( const QString& ) ;
 
 	void scaleGUI( void ) ;
-
-	void runInUiThread( std::function< void() > function ) ;
 
 	void waitForOneSecond( void ) ;
 
@@ -452,6 +453,7 @@ namespace utility
 	bool pathIsFile( const QString& ) ;
 	bool pathIsReadable( const QString&,bool isFolder = true ) ;
 	bool pathIsWritable( const QString&,bool isFolder = true ) ;
+	QString cleanPath( const QString& ) ;
 
 	QString userName() ;
 	QString userIDAsString() ;
@@ -485,6 +487,19 @@ namespace utility
 
 	void applicationStarted() ;
 
+	class CPU
+	{
+	public:
+		CPU() ;
+		bool x86_32() const ;
+		bool x86_64() const ;
+		bool aarch64() const ;
+		bool aarch32() const ;
+	private:
+		const QString& getCPU() const ;
+		const QString& m_cpu ;
+	} ;
+
 	QString removeOption( const QStringList&,const QString& option ) ;
 	QString removeOption( const QString& commaSeparatedString,const QString& option ) ;
 
@@ -500,10 +515,6 @@ namespace utility
 	} ;
 
 	SocketPaths socketPath() ;
-
-	::Task::future< bool >& openPath( const QString& path,const QString& opener ) ;
-
-	void openPath( const QString& path,const QString& opener,QWidget *,const QString&,const QString& ) ;
 }
 
 namespace utility
@@ -512,8 +523,12 @@ namespace utility
 	QByteArray fileContents( const T& e )
 	{
 		QFile file( e ) ;
-		file.open( QIODevice::ReadOnly ) ;
-		return file.readAll() ;
+		if( file.open( QIODevice::ReadOnly ) ){
+
+			return file.readAll() ;
+		}else{
+			return {} ;
+		}
 	}
 
 	bool pathExists( const QString& ) ;
@@ -596,6 +611,25 @@ namespace utility
 
 namespace utility
 {
+	template< typename Function >
+	void connectQCheckBox( QCheckBox * cb,Function function )
+	{
+		#if QT_VERSION < QT_VERSION_CHECK( 6,7,0 )
+			QObject::connect( cb,&QCheckBox::stateChanged,[ function ]( int s ){
+
+				function( s == static_cast< int >( Qt::CheckState::Checked ) ) ;
+			} ) ;
+		#else
+			QObject::connect( cb,&QCheckBox::checkStateChanged,[ function ]( Qt::CheckState s ){
+
+				function( s == Qt::CheckState::Checked ) ;
+			} ) ;
+		#endif
+	}
+}
+
+namespace utility
+{
 	class Task
 	{
 	public :
@@ -639,11 +673,12 @@ namespace utility
 
 		static ::Task::future< utility::Task >& run( const QString& exe,
 							     const QStringList& list,
-							     const QByteArray& password = QByteArray() )
+							     const QByteArray& password = QByteArray(),
+							     const QProcessEnvironment& env = utility::systemEnvironment() )
 		{
 			return ::Task::run( [ = ](){
 
-				return utility::Task( exe,list,-1,utility::systemEnvironment(),password ) ;
+				return utility::Task( exe,list,-1,env,password ) ;
 			} ) ;
 		}
 
@@ -791,6 +826,8 @@ namespace utility
 	};
 
 	using task_result = utility2::result< utility::Task > ;
+
+	void openPath( const QString& path,const cmd::exe& opener,QWidget *,const QString&,const QString& ) ;
 }
 
 namespace utility
@@ -821,6 +858,9 @@ private:
 
 namespace utility
 {
+
+bool copyFile( const QString& src,const QString& dst,bool = true ) ;
+
 namespace imp
 {
 template< typename Operator >

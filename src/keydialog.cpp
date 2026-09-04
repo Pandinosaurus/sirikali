@@ -26,6 +26,7 @@
 #include <QTableWidget>
 #include <QDebug>
 #include <QFile>
+#include <QDesktopServices>
 #include <QMessageBox>
 
 #include "win.h"
@@ -38,6 +39,7 @@
 #include "crypto.h"
 #include "configfileoption.h"
 #include "processManager.h"
+#include "utils/threads.hpp"
 
 /*
  *
@@ -47,7 +49,7 @@
 keyDialog::keyDialog( QWidget * parent,
 		      secrets& s,
 		      bool o,
-		      const QString& q,
+		      const cmd::exe& q,
 		      keyDialog::volumeList z,
 		      std::function< void() > f,
 		      std::function< void() > g ) :
@@ -150,11 +152,15 @@ void keyDialog::autoMount( const keyDialog::entry& ee )
 
 			this->openVolume() ;
 
-		}else if( !ee.volEntry.password().isEmpty() ){
+		}else if( !m_ui->lineEditKey->text().isEmpty() ){
 
 			this->openVolume() ;
 
 		}else if( ee.engine->requiresNoPassword() ){
+
+			this->openVolume() ;
+
+		}else if( m_keyType.yubikey() ){
 
 			this->openVolume() ;
 		}
@@ -176,11 +182,12 @@ void keyDialog::unlockVolume()
  * Called when creating volumes
  *
  */
-keyDialog::keyDialog( QWidget * parent,secrets& s,
+keyDialog::keyDialog( QWidget * parent,
+		      secrets& s,
 		      std::function< void() > p,
 		      std::function< void() > l,
 		      bool o,
-		      const QString& q,
+		      const cmd::exe& q,
 		      const QString& exe ) :
 	QDialog( parent ),
 	m_ui( new Ui::keyDialog ),
@@ -221,32 +228,24 @@ void keyDialog::setUpInitUI()
 
 	m_checkBoxOriginalText = m_ui->checkBoxOpenReadOnly->text() ;
 
-    m_ui->tbVisibleKey->setIcon(QIcon(":/icons/password_show.png"));
+	m_ui->tbVisibleKey->setIcon( QIcon( ":/icons/password_show.png" ) ) ;
 
-	connect( m_ui->pbCancel,SIGNAL( clicked() ),
-		 this,SLOT( pbCancel() ) ) ;
-	connect( m_ui->pbOpen,SIGNAL( clicked() ),
-		 this,SLOT( pbOpen() ) ) ;
-	connect( m_ui->pbkeyOption,SIGNAL( clicked() ),
-		 this,SLOT( pbkeyOption() ) ) ;
-	connect( m_ui->pbOpenFolderPath,SIGNAL( clicked() ),
-		 this,SLOT( pbFolderPath() ) ) ;
-	connect( m_ui->pbMountPoint,SIGNAL( clicked() ),
-		 this,SLOT( pbMountPointPath() ) ) ;
-	connect( m_ui->checkBoxOpenReadOnly,SIGNAL( stateChanged( int ) ),
-		 this,SLOT( cbMountReadOnlyStateChanged( int ) ) ) ;
-	connect( m_ui->pbOK,SIGNAL( clicked( bool ) ),
-		 this,SLOT( pbOK() ) ) ;
-    connect( m_ui->tbVisibleKey,SIGNAL( clicked() ),
-         this,SLOT( cbVisibleKeyclicked() ) ) ;
-	connect( m_ui->pbOptions,SIGNAL( clicked() ),
-		 this,SLOT( pbOptions() ) ) ;
-	connect( m_ui->pbSetKeyKeyFile,SIGNAL( clicked() ),
-		 this,SLOT( pbSetKeyKeyFile() ) ) ;
-	connect( m_ui->pbSetKey,SIGNAL( clicked() ),
-		 this,SLOT( pbSetKey() ) ) ;
-	connect( m_ui->pbSetKeyCancel,SIGNAL( clicked() ),
-		 this,SLOT( pbSetKeyCancel() ) ) ;
+	utility::connectQCheckBox( m_ui->checkBoxOpenReadOnly,[ this ]( bool s ){
+
+		this->keyDialog::cbMountReadOnlyStateChanged( s ) ;
+	} ) ;
+
+	connect( m_ui->pbCancel,&QPushButton::clicked,this,&keyDialog::pbCancel ) ;
+	connect( m_ui->pbOpen,&QPushButton::clicked,this,&keyDialog::pbOpen ) ;
+	connect( m_ui->pbkeyOption,&QPushButton::clicked,this,&keyDialog::pbkeyOption ) ;
+	connect( m_ui->pbOpenFolderPath,&QPushButton::clicked,this,&keyDialog::pbFolderPath ) ;
+	connect( m_ui->pbMountPoint,&QPushButton::clicked,this,&keyDialog::pbMountPointPath ) ;
+	connect( m_ui->pbOK,&QPushButton::clicked,this,&keyDialog::pbOK ) ;
+	connect( m_ui->tbVisibleKey,&QToolButton::clicked,this,&keyDialog::cbVisibleKeyclicked ) ;
+	connect( m_ui->pbOptions,&QPushButton::clicked,this,&keyDialog::pbOptions ) ;
+	connect( m_ui->pbSetKeyKeyFile,&QPushButton::clicked,this,&keyDialog::pbSetKeyKeyFile ) ;
+	connect( m_ui->pbSetKey,&QPushButton::clicked,this,&keyDialog::pbSetKey ) ;
+	connect( m_ui->pbSetKeyCancel,&QPushButton::clicked,this,&keyDialog::pbSetKeyCancel ) ;
 
 	connect( m_ui->pbMountPoint_1,&QPushButton::clicked,[ this ](){
 
@@ -268,8 +267,8 @@ void keyDialog::setUpInitUI()
 
 		m_ui->pbMountPoint_1->setVisible( false ) ;
 
-		connect( m_ui->lineEditMountPoint,SIGNAL( textChanged( QString ) ),
-			 this,SLOT( textChanged( QString ) ) ) ;
+		connect( m_ui->lineEditMountPoint,&QLineEdit::textChanged,
+			 this,&keyDialog::textChanged ) ;
 
 		m_ui->pbOpen->setText( tr( "&Create" ) ) ;
 
@@ -279,8 +278,8 @@ void keyDialog::setUpInitUI()
 
 			//m_ui->lineEditFolderPath->setText( "Z:" ) ;
 			//utility::setWindowsMountPointOptions( this,m_ui->lineEditFolderPath,m_ui->pbOpenFolderPath ) ;
-			m_ui->lineEditFolderPath->setText( m_settings.homePath() + "/Desktop/" ) ;
-			//m_ui->pbOpenFolderPath->setIcon( QIcon( ":/folder.png" ) ) ;
+			m_ui->lineEditFolderPath->setText( m_settings.homePath() + "/" ) ;
+			//m_ui->pbOpenFolderPath->setIcon( QIcon( ":/icons/folder.png" ) ) ;
 		}else{
 			m_ui->lineEditFolderPath->setText( m_settings.homePath() + "/" ) ;
 		}
@@ -297,14 +296,14 @@ void keyDialog::setUpInitUI()
 
 		m_ui->label_2->setText( tr( "Mount Path" ) ) ;
 
-		m_ui->pbMountPoint->setIcon( QIcon( ":/folder.png" ) ) ;
+        m_ui->pbMountPoint->setIcon( QIcon( ":/icons/folder.png" ) ) ;
 
-		m_ui->pbMountPoint_1->setIcon( QIcon( ":/folder.png" ) ) ;
+        m_ui->pbMountPoint_1->setIcon( QIcon( ":/icons/folder.png" ) ) ;
 
 		m_ui->lineEditKey->setFocus() ;
 	}
 
-	QIcon folderIcon( ":/folder.png" ) ;
+	QIcon folderIcon( ":/icons/folder.png" ) ;
 
 	m_ui->pbOpenFolderPath->setIcon( folderIcon ) ;
 
@@ -320,8 +319,8 @@ void keyDialog::setUpInitUI()
 
 		if( m_keyStrength ){
 
-			connect( m_ui->lineEditKey,SIGNAL( textChanged( QString ) ),
-				 this,SLOT( passWordTextChanged( QString ) ) ) ;
+			connect( m_ui->lineEditKey,&QLineEdit::textChanged,
+				 this,&keyDialog::passWordTextChanged ) ;
 		}
 
 		m_ui->lineEditMountPoint->setFocus() ;
@@ -337,9 +336,9 @@ void keyDialog::setUpInitUI()
 		m_ui->pbOpen->setFocus() ;
 	}
 
-    m_ui->tbVisibleKey->setToolTip( tr( "Check This Box To Make Password Visible" ) ) ;
+	m_ui->tbVisibleKey->setToolTip( tr( "Check This Box To Make Password Visible" ) ) ;
 
-    m_ui->tbVisibleKey->setEnabled( m_settings.enableRevealingPasswords() ) ;
+	m_ui->tbVisibleKey->setEnabled( m_settings.enableRevealingPasswords() ) ;
 }
 
 void keyDialog::setVolumeToUnlock()
@@ -382,6 +381,49 @@ void keyDialog::setVolumeToUnlock()
 
 			this->windowSetTitle( tr( "Unlocking \"%1\"" ).arg( m_path ) ) ;
 		}
+	}
+
+	auto mm = favorites2::decodeKeyKeyFile( s.volEntry.password() ) ;
+
+	auto keySource = m_keyType.fromString( s.volEntry.favorite().passwordSource ) ;
+
+	if( keySource == keyType::name::Key ){
+
+		if( mm.hasKeyOnly() ){
+
+			m_ui->lineEditKey->setText( mm.password() ) ;
+
+		}else if( mm.hasBoth() ){
+
+			const auto& a = mm.keyFilePath() ;
+			const auto& b = mm.password() ;
+
+			auto m = Task::await( [ & ](){ return crypto::hmac_key( a,b ) ; } ) ;
+
+			m_ui->lineEditKey->setText( m ) ;
+
+		}else if( mm.hasKeyFileOnly() ){
+
+			m_keyType.setType( keyType::name::keyKeyFile ) ;
+
+			this->keyTypeChanged() ;
+
+			m_ui->lineEditSetKeyKeyFile->setText( mm.keyFilePath() ) ;
+
+			return ;
+		}
+
+	}else if( keySource == keyType::name::yubikey ){
+
+		m_keyType.setType( keySource ) ;
+
+		this->keyTypeChanged() ;
+	}else{
+		m_keyType.setType( keySource ) ;
+
+		this->keyTypeChanged() ;
+
+		return ;
 	}
 
 	this->autoMount( s ) ;
@@ -469,22 +511,21 @@ void keyDialog::setUpVolumeProperties( const keyDialog::entry& ee )
 	m_mountOptions     = e ;
 	m_favoriteReadOnly = e.readOnlyMode ;
 
-	if( m_favoriteReadOnly.defined() ){
+	if( utility::platformIsWindows() ){
 
-		m_ui->checkBoxOpenReadOnly->setChecked( m_favoriteReadOnly.True() ) ;
-	}else{
-		if( utility::platformIsWindows() ){
+		m_windowsCanUnlockReadOnlyMode = ee.engine->windowsCanUnlocInReadWriteMode() ;
 
-			m_windowsCanUnlockReadOnlyMode = ee.engine->windowsCanUnlocInReadWriteMode() ;
+		if( m_windowsCanUnlockReadOnlyMode ){
 
-			m_ui->checkBoxOpenReadOnly->setEnabled( m_windowsCanUnlockReadOnlyMode ) ;
-		}else{
+			m_ui->checkBoxOpenReadOnly->setChecked( m_favoriteReadOnly.True() ) ;
+
 			m_ui->checkBoxOpenReadOnly->setEnabled( true ) ;
-			m_ui->checkBoxOpenReadOnly->setChecked( m_settings.getOpenVolumeReadOnlyOption() ) ;
+		}else{
+			m_ui->checkBoxOpenReadOnly->setEnabled( false ) ;
 		}
+	}else{
+		m_ui->checkBoxOpenReadOnly->setChecked( m_favoriteReadOnly.True() ) ;
 	}
-
-	m_ui->lineEditKey->setText( ee.volEntry.password() ) ;
 
 	this->setUIVisible( true ) ;
 
@@ -629,7 +670,7 @@ void keyDialog::setDefaultUI()
 
 	m_ui->pbOK->setVisible( false ) ;
 	m_ui->pbOpen->setVisible( true ) ;
-    m_ui->tbVisibleKey->setVisible( true ) ;
+	m_ui->tbVisibleKey->setVisible( true ) ;
 	m_ui->pbkeyOption->setVisible( false ) ;
 	m_ui->textEdit->setVisible( false ) ;
 }
@@ -731,7 +772,7 @@ bool keyDialog::keySelected( int e )
 	return m == keyDialog::keyType::name::Key || m == keyDialog::keyType::name::yubikey ;
 }
 
-void keyDialog::cbMountReadOnlyStateChanged( int state )
+void keyDialog::cbMountReadOnlyStateChanged( bool checked )
 {
 	if( this->upgradingFileSystem() ){
 
@@ -740,11 +781,11 @@ void keyDialog::cbMountReadOnlyStateChanged( int state )
 
 	if( m_favoriteReadOnly.defined() ){
 
-		m_ui->checkBoxOpenReadOnly->setChecked( state == Qt::Checked ) ;
+		m_ui->checkBoxOpenReadOnly->setChecked( checked ) ;
 		return ;
 	}
 
-	auto e = m_settings.setOpenVolumeReadOnly( this,state == Qt::Checked ) ;
+	auto e = m_settings.setOpenVolumeReadOnly( this,checked ) ;
 
 	m_ui->checkBoxOpenReadOnly->setChecked( e ) ;
 
@@ -831,7 +872,7 @@ void keyDialog::enableAll()
 
 	if( m_settings.enableRevealingPasswords() ){
 
-        m_ui->tbVisibleKey->setEnabled( this->keySelected( index ) ) ;
+		m_ui->tbVisibleKey->setEnabled( this->keySelected( index ) ) ;
 	}
 
 	if( utility::platformIsNOTWindows() ){
@@ -850,7 +891,7 @@ void keyDialog::enableAll()
 
 void keyDialog::disableAll()
 {
-    m_ui->tbVisibleKey->setEnabled( false ) ;
+	m_ui->tbVisibleKey->setEnabled( false ) ;
 	m_ui->pbMountPoint->setEnabled( false ) ;
 	m_ui->pbMountPoint_1->setEnabled( false ) ;
 	m_ui->cbKeyType->setEnabled( false ) ;
@@ -881,7 +922,7 @@ void keyDialog::setUIVisible( bool e )
 	m_ui->pbCancel->setVisible( e ) ;
 	m_ui->pbOpen->setVisible( e ) ;
 	m_ui->label->setVisible( e ) ;
-    m_ui->tbVisibleKey->setVisible( e ) ;
+	m_ui->tbVisibleKey->setVisible( e ) ;
 	m_ui->pbkeyOption->setVisible( e ) ;
 
 	if( e ){
@@ -929,6 +970,30 @@ void keyDialog::closeEvent( QCloseEvent * e )
 	this->pbCancel() ;
 }
 
+secrets::wallet keyDialog::getBackendStorage()
+{
+	auto type = m_keyType.type() ;
+
+	if( type == keyType::name::kdewallet ){
+
+		return m_secrets.walletBk( LXQt::Wallet::BackEnd::kwallet ) ;
+
+	}else if( type == keyType::name::libsecret ){
+
+		return m_secrets.walletBk( LXQt::Wallet::BackEnd::libsecret ) ;
+
+	}else if( type == keyType::name::osxkeychain ){
+
+		return m_secrets.walletBk( LXQt::Wallet::BackEnd::osxkeychain ) ;
+
+	}else if( type == keyType::name::windowsdpapi ){
+
+		return m_secrets.walletBk( LXQt::Wallet::BackEnd::windows_dpapi ) ;
+	}else{
+		return m_secrets.walletBk( LXQt::Wallet::BackEnd::internal ) ;
+	}
+}
+
 bool keyDialog::mountedAll()
 {
 	return m_volumes.size() == m_counter ;
@@ -951,8 +1016,6 @@ void keyDialog::pbOpen()
 	}
 
 	if( m_keyType.containsSecretStorage() ){
-
-		secrets::wallet::walletKey w ;
 
 		LXQt::Wallet::BackEnd ww ;
 
@@ -992,42 +1055,98 @@ void keyDialog::pbOpen()
 
 		using mm = LXQt::Wallet::BackEnd ;
 
-		if( ww == mm::kwallet || ww == mm::libsecret || ww == mm::osxkeychain ){
+		if( ww == mm::internal ){
 
-			w = m_secrets.walletBk( ww ).getKey( m_path ) ;
+			auto& wlt = settings::instance() ;
 
-		}else if( ww == mm::internal || ww == mm::windows_dpapi ){
+			auto s = LXQt::Wallet::walletExists( ww,wlt.walletName(),wlt.applicationName() ) ;
 
-			w = m_secrets.walletBk( ww ).getKey( m_path,this ) ;
-
-			if( w.notConfigured ){
+			if( !s ){
 
 				this->showErrorMessage( tr( "Internal Wallet Is Not Configured." ) ) ;
 				return ;
 			}
-		}else{
-			/*
-			 * We shouldn't get here
-			 */
-			return this->openVolume() ;
 		}
 
-		if( w.opened ){
-
-			auto wallet = m_keyType.toString() ;
-
-			if( w.key.isEmpty() ){
-
-				m_walletType = wallet ;
-
-				auto s = tr( "Volume Not Found in \"%1\".\n\nSet The Volume Key To Add It To The Wallet Before Mounting." ).arg( wallet ) ;
-
-				this->setKeyInWallet( wallet,s ) ;
-			}else{
-				m_key = utility::convertPassword( w.key ) ;
-				this->openVolume() ;
+		class meaw
+		{
+		public:
+			meaw( keyDialog * parent,LXQt::Wallet::BackEnd ww ) :
+				m_parent( *parent ),
+				m_showAndHide( this->showAndHide( ww ) ),
+				m_wallet( this->wallet( ww ) )
+			{
+				m_wallet.open( *this ) ;
 			}
-		}
+			void opened()
+			{
+				auto& m = *this ;
+				m( true ) ;
+			}
+			void before()
+			{
+				if( m_showAndHide ){
+
+					m_parent.hide() ;
+				}
+			}
+			void after()
+			{
+			}
+			void operator()( bool e )
+			{
+				if( e ){
+
+					utils::qthread::run( [ this ](){
+
+						return m_wallet.bk().readValue( m_parent.m_path ) ;
+
+					},[ this ]( const QByteArray& key ){
+
+						m_parent.m_key = key ;
+
+						this->openVolume() ;
+					} ) ;
+				}
+
+				if( m_showAndHide ){
+
+					m_parent.show() ;
+				}
+			}
+		private:
+			secrets::wallet wallet( LXQt::Wallet::BackEnd bk )
+			{
+				return m_parent.m_secrets.walletBk( bk ) ;
+			}
+			void openVolume()
+			{
+				auto wallet = m_parent.m_keyType.toString() ;
+
+				if( m_parent.m_key.isEmpty() ){
+
+					m_parent.m_walletType = wallet ;
+
+					auto s = tr( "Volume Not Found in \"%1\".\n\nSet The Volume Key To Add It To The Wallet Before Mounting." ).arg( wallet ) ;
+
+					m_parent.setKeyInWallet( m_parent.m_walletType,s ) ;
+				}else{
+					m_parent.m_key = utility::convertPassword( m_parent.m_key ).toUtf8() ;
+					m_parent.openVolume() ;
+				}
+			}
+			bool showAndHide( LXQt::Wallet::BackEnd m )
+			{
+				using bk = LXQt::Wallet::BackEnd ;
+
+				return m == bk::internal || m == bk::windows_dpapi ;
+			}
+			keyDialog& m_parent ;
+			bool m_showAndHide ;
+			secrets::wallet m_wallet ;
+		} ;
+
+		meaw( this,ww ) ;
 	}else{
 		this->openVolume() ;
 	}
@@ -1037,7 +1156,7 @@ void keyDialog::openMountPoint( const QString& m )
 {
 	if( m_settings.autoOpenFolderOnMount() ){
 
-		utility::Task::exec( m_fileManagerOpen,{ m } ) ;
+		utility::openPath( m,m_fileManagerOpen,nullptr,"","" ) ;
 	}
 }
 
@@ -1100,8 +1219,8 @@ void keyDialog::pbOK()
 		return this->HideUI() ;
 	}
 
-    m_ui->tbVisibleKey->setIcon(QIcon(":/icons/password_show.png")) ;
-    m_ui->lineEditKey->setEchoMode( QLineEdit::Password );
+	m_ui->tbVisibleKey->setIcon(QIcon(":/icons/password_show.png")) ;
+	m_ui->lineEditKey->setEchoMode( QLineEdit::Password );
 
 	this->setUIVisible( true ) ;
 
@@ -1110,17 +1229,16 @@ void keyDialog::pbOK()
 	if( this->keySelected( m_ui->cbKeyType->currentIndex() ) ) {
 
         m_ui->tbVisibleKey->setVisible( true ) ;
+
 		m_ui->pbkeyOption->setVisible( false ) ;
 	}else{
-        m_ui->tbVisibleKey->setVisible( false ) ;
+		m_ui->tbVisibleKey->setVisible( false ) ;
 		m_ui->pbkeyOption->setVisible( true ) ;
 	}
 }
 
 void keyDialog::encryptedFolderCreate()
 {
-	auto deleteKey = utility2::make_raii( [ & ](){ m_walletKey.deleteKey() ; } ) ;
-
 	auto path = m_ui->lineEditFolderPath->text() ;
 
 	auto m = utility::split( path,'/' ).last() ;
@@ -1162,12 +1280,26 @@ void keyDialog::encryptedFolderCreate()
 		}
 	}
 
-	if( m_engine->takesTooLongToUnlock() ){
+	this->disableAll() ;
+
+	utils::qthread::run( [ this ](){
+
+		return m_engine->takesTooLongToUnlock() ;
+
+	},[ path,m,this ]( bool e ){
+
+		this->encryptedFolderCreate( path,m,e ) ;
+	} ) ;
+}
+
+void keyDialog::encryptedFolderCreate( const QString& path,const QString& m,bool s )
+{
+	auto deleteKey = utility2::make_raii( [ & ](){ m_walletKey.deleteKey() ; } ) ;
+
+	if( s ){
 
 		m_warningLabel.showCreate( m_engine->name() ) ;
 	}
-
-	this->disableAll() ;
 
 	m_working = true ;
 
@@ -1263,12 +1395,24 @@ void keyDialog::encryptedFolderMount()
 		m_engine = { m_engine.get(),m_engine.cipherFolder(),m_mountOptions.configFile } ;
 	}
 
-	if( m_engine->takesTooLongToUnlock() ){
+	this->disableAll() ;
+
+	utils::qthread::run( [ this ](){
+
+		return m_engine->takesTooLongToUnlock() ;
+
+	},[ m,this ]( bool e ){
+
+		this->encryptedFolderMount( m,e ) ;
+	} ) ;
+}
+
+void keyDialog::encryptedFolderMount( const QString& m,bool s )
+{
+	if( s ){
 
 		m_warningLabel.showUnlock( m_engine->name() ) ;
 	}
-
-	this->disableAll() ;
 
 	auto e = siritask::encryptedFolderMount( { { m_path,m,m_key,m_mountOptions },false,m_engine } ) ;
 
@@ -1307,107 +1451,121 @@ void keyDialog::pbSetKeyKeyFile()
 
 void keyDialog::setKeyInWallet()
 {
-	auto _enable_all = [ & ](){
-
-		m_ui->labelSetKeyKeyFile->setEnabled( false ) ;
-		m_ui->labelSetKeyPassword->setEnabled( true ) ;
-		m_ui->lineEditSetKeyKeyFile->setEnabled( false ) ;
-		m_ui->lineEditSetKeyPassword->setEnabled( true ) ;
-		m_ui->pbSetKey->setEnabled( true ) ;
-		m_ui->pbSetKeyCancel->setEnabled( true ) ;
-		m_ui->pbSetKeyKeyFile->setEnabled( false ) ;
-		m_ui->labelSetKey->setEnabled( true ) ;
-	} ;
-
 	auto passphrase = m_ui->lineEditSetKeyPassword->text() ;
 
 	if( passphrase.isEmpty() ){
 
 		m_ui->labelSetKey->setText( tr( "Volume Key Can Not Be Empty." ) ) ;
-		return _enable_all() ;
+		return this->enableAllx() ;
 	}
 
-	auto w = [ & ](){
+	qDebug() << "ssss" ;
 
-		auto type = m_keyType.type() ;
-
-		if( type == keyType::name::kdewallet ){
-
-			return m_secrets.walletBk( LXQt::Wallet::BackEnd::kwallet ) ;
-
-		}else if( type == keyType::name::libsecret ){
-
-			return m_secrets.walletBk( LXQt::Wallet::BackEnd::libsecret ) ;
-
-		}else if( type == keyType::name::osxkeychain ){
-
-			return m_secrets.walletBk( LXQt::Wallet::BackEnd::osxkeychain ) ;
-
-		}else if( type == keyType::name::windowsdpapi ){
-
-			return m_secrets.walletBk( LXQt::Wallet::BackEnd::windows_dpapi ) ;
-		}else{
-			return m_secrets.walletBk( LXQt::Wallet::BackEnd::internal ) ;
+	class meaw
+	{
+	public:
+		meaw( keyDialog * parent,const QString& e,secrets::wallet m ) :
+			m_parent( *parent ),
+			m_password( e ),
+			m_showAndHide( this->showAndHide( m.bk().backEnd() ) ),
+			m_wallet( m )
+		{
+			m_wallet.open( *this ) ;
 		}
-	}() ;
+		void opened()
+		{
+			auto& m = *this ;
 
-	auto m = [ & ](){
-
-		if( w->backEnd() == LXQt::Wallet::BackEnd::internal ||
-		    w->backEnd() == LXQt::Wallet::BackEnd::windows_dpapi ){
-
-			return w.openSync( [](){ return true ; },
-					   [ this ](){ this->hide() ; },
-					   [ this ](){ this->show() ; } ) ;
-		}else{
-			return w.open( [](){ return true ; } ) ;
+			m( true ) ;
 		}
-	}() ;
+		void before()
+		{
+			if( m_showAndHide ){
 
-	if( m ){
-
-		QString id ;
-
-		if( m_create ){
-
-			id = m_ui->lineEditFolderPath->text() ;
-		}else{
-			id = m_path ;
-		}
-
-		if( w->readValue( id ).isEmpty() ){
-
-			if( favorites2::addKey( w,id,passphrase ).await() ){
-
-				m_keyType.setType( keyType::name::Key ) ;
-				m_ui->lineEditKey->setText( passphrase ) ;
-				this->SetUISetKey( false ) ;
-				this->setUIVisible( true ) ;
-				m_ui->pbkeyOption->setVisible( false ) ;
-				this->disableAll() ;
-
-				m_walletKey.set = true ;
-				m_walletKey.id = id ;
-				m_walletKey.bk = w->backEnd() ;
-				m_walletKey.walletName = m_settings.walletName( m_walletKey.bk ) ;
-				m_walletKey.appName = m_settings.applicationName() ;
-
-				this->openVolume() ;
-
-				return ;
-			}else{
-				m_ui->labelSetKey->setText( tr( "Failed To Add A Volume To The A Wallet." ) ) ;
+				m_parent.hide() ;
 			}
-		}else{
-			m_ui->labelSetKey->setText( tr( "Volume Already Exists In The Wallet." ) ) ;
 		}
+		void after()
+		{
+			if( m_showAndHide ){
 
-		return ;
+				m_parent.show() ;
+			}
+		}
+		void operator()( bool e )
+		{
+			if( e ){
+
+				m_parent.walletOpened( m_wallet,m_password ) ;
+			}else{
+				m_parent.m_ui->labelSetKey->setText( tr( "Failed To Open Wallet." ) ) ;
+			}
+
+			m_parent.enableAllx() ;
+		}
+	private:
+		bool showAndHide( LXQt::Wallet::BackEnd m )
+		{
+			using bk = LXQt::Wallet::BackEnd ;
+
+			return m == bk::internal || m == bk::windows_dpapi ;
+		}
+		keyDialog& m_parent ;
+		QString m_password ;
+		bool m_showAndHide ;
+		secrets::wallet m_wallet ;
+	} ;
+
+	meaw( this,passphrase,this->getBackendStorage() ) ;
+}
+
+void keyDialog::enableAllx()
+{
+	m_ui->labelSetKeyKeyFile->setEnabled( false ) ;
+	m_ui->labelSetKeyPassword->setEnabled( true ) ;
+	m_ui->lineEditSetKeyKeyFile->setEnabled( false ) ;
+	m_ui->lineEditSetKeyPassword->setEnabled( true ) ;
+	m_ui->pbSetKey->setEnabled( true ) ;
+	m_ui->pbSetKeyCancel->setEnabled( true ) ;
+	m_ui->pbSetKeyKeyFile->setEnabled( false ) ;
+	m_ui->labelSetKey->setEnabled( true ) ;
+}
+
+void keyDialog::walletOpened( secrets::wallet& w,const QString& passphrase )
+{
+	QString id ;
+
+	if( m_create ){
+
+		id = m_ui->lineEditFolderPath->text() ;
 	}else{
-		m_ui->labelSetKey->setText( tr( "Failed To Open Wallet." ) ) ;
+		id = m_path ;
 	}
 
-	_enable_all() ;
+	if( w->readValue( id ).isEmpty() ){
+
+		if( favorites2::addKey( w,id,passphrase ).await() ){
+
+			m_keyType.setType( keyType::name::Key ) ;
+			m_ui->lineEditKey->setText( passphrase ) ;
+			this->SetUISetKey( false ) ;
+			this->setUIVisible( true ) ;
+			m_ui->pbkeyOption->setVisible( false ) ;
+			this->disableAll() ;
+
+			m_walletKey.set = true ;
+			m_walletKey.id = id ;
+			m_walletKey.bk = w->backEnd() ;
+			m_walletKey.walletName = m_settings.walletName( m_walletKey.bk ) ;
+			m_walletKey.appName = m_settings.applicationName() ;
+
+			this->openVolume() ;
+		}else{
+			m_ui->labelSetKey->setText( tr( "Failed To Add A Volume To The A Wallet." ) ) ;
+		}
+	}else{
+		m_ui->labelSetKey->setText( tr( "Volume Already Exists In The Wallet." ) ) ;
+	}
 }
 
 void keyDialog::setKeyInWallet( const QString& volumeType,const QString& title )
@@ -1487,7 +1645,7 @@ void keyDialog::pbSetKeyCancel()
 	this->setUIVisible( true ) ;
 	this->enableAll() ;
 	m_keyType.setAsKey() ;
-    m_keyType.setEnabled(true) ;
+	m_keyType.setEnabled(true) ;
 }
 
 void keyDialog::setKeyEnabled( bool e )
@@ -1547,10 +1705,10 @@ void keyDialog::keyTypeChanged()
 	auto _showVisibleKeyOption = [ this ]( bool e ){
 
 		bool s = m_settings.enableRevealingPasswords() ;
-        m_ui->tbVisibleKey->setEnabled( e && s ) ;
-        m_ui->tbVisibleKey->setIcon(QIcon(":/icons/password_show.png")) ;
-        m_ui->lineEditKey->setEchoMode( QLineEdit::Password );
-        m_ui->tbVisibleKey->setVisible( e ) ;
+		m_ui->tbVisibleKey->setEnabled( e && s ) ;
+		m_ui->tbVisibleKey->setIcon(QIcon(":/icons/password_show.png")) ;
+		m_ui->lineEditKey->setEchoMode( QLineEdit::Password );
+		m_ui->tbVisibleKey->setVisible( e ) ;
 		m_ui->pbkeyOption->setVisible( !e ) ;
 	} ;
 
@@ -1636,7 +1794,7 @@ void keyDialog::keyTypeChanged()
 				this->showErrorMessage( tr( "Volume Name Field Is Empty." ) ) ;
 				m_ui->cbKeyType->setCurrentIndex( 0 ) ;
 				m_ui->lineEditMountPoint->setFocus() ;
-                m_ui->tbVisibleKey->setVisible( false ) ;
+				m_ui->tbVisibleKey->setVisible( false ) ;
 				return ;
 			}
 
@@ -1738,11 +1896,13 @@ void keyDialog::cbVisibleKeyclicked()
 {
 	if( this->keySelected( m_ui->cbKeyType->currentIndex() ) ){
 
-        if(m_ui->lineEditKey->echoMode() == QLineEdit::Password){
-            m_ui->tbVisibleKey->setIcon(QIcon(":/icons/password_hide.png"));
+	if( m_ui->lineEditKey->echoMode() == QLineEdit::Password ){
+
+		m_ui->tbVisibleKey->setIcon(QIcon(":/icons/password_hide.png") ) ;
+
 			m_ui->lineEditKey->setEchoMode( QLineEdit::Normal ) ;
 		}else{
-            m_ui->tbVisibleKey->setIcon(QIcon(":/icons/password_show.png"));
+			m_ui->tbVisibleKey->setIcon(QIcon(":/icons/password_show.png"));
 			m_ui->lineEditKey->setEchoMode( QLineEdit::Password ) ;
 		}
 
@@ -1752,7 +1912,7 @@ void keyDialog::cbVisibleKeyclicked()
 
 void keyDialog::secretStorage()
 {
-	m_ui->pbkeyOption->setIcon( QIcon( ":/module.png" ) ) ;
+    m_ui->pbkeyOption->setIcon( QIcon( ":/icons/module.png" ) ) ;
 	m_ui->pbkeyOption->setEnabled( false ) ;
 	m_ui->lineEditKey->setEchoMode( QLineEdit::Normal ) ;
 	m_ui->label->setText( tr( "Plugin name" ) ) ;
@@ -1766,7 +1926,7 @@ void keyDialog::key()
 	m_ui->pbkeyOption->setEnabled( false ) ;
 	m_ui->label->setText( m_keyType.toString() ) ;
 	m_ui->lineEditKey->setEchoMode( QLineEdit::Password ) ;
-    m_ui->tbVisibleKey->setIcon(QIcon(":/icons/password_show.png")) ;
+	m_ui->tbVisibleKey->setIcon(QIcon(":/icons/password_show.png")) ;
 	m_ui->lineEditKey->clear() ;
 	m_ui->lineEditKey->setEnabled( true ) ;
 	m_ui->lineEditKey->setFocus() ;
@@ -1778,7 +1938,7 @@ void keyDialog::yubiKey()
 	m_ui->pbkeyOption->setEnabled( false ) ;
 	m_ui->label->setText( m_keyType.toString( keyType::name::Key ) ) ;
 	m_ui->lineEditKey->setEchoMode( QLineEdit::Password ) ;
-    m_ui->tbVisibleKey->setIcon(QIcon(":/icons/password_show.png")) ;
+	m_ui->tbVisibleKey->setIcon(QIcon(":/icons/password_show.png")) ;
 	m_ui->lineEditKey->clear() ;
 	m_ui->lineEditKey->setEnabled( true ) ;
 	m_ui->lineEditKey->setFocus() ;
@@ -1786,7 +1946,7 @@ void keyDialog::yubiKey()
 
 void keyDialog::keyFile()
 {
-	m_ui->pbkeyOption->setIcon( QIcon( ":/keyfile.png" ) ) ;
+    m_ui->pbkeyOption->setIcon( QIcon( ":/icons/keyfile.png" ) ) ;
 	m_ui->lineEditKey->setEchoMode( QLineEdit::Normal ) ;
 	m_ui->label->setText( m_keyType.toString() ) ;
 	m_ui->pbkeyOption->setEnabled( true ) ;
@@ -1933,6 +2093,56 @@ bool keyDialog::keyType::containsSecretStorage() const
 		m == keyType::name::windowsdpapi ;
 }
 
+keyDialog::keyType::name keyDialog::keyType::fromString( const QString& e )
+{
+	if( e == "Password" ){
+
+		return keyType::name::Key ;
+
+	}else if( e == "KeyFile" ){
+
+		return keyType::name::keyfile ;
+
+	}else if( e == "Key+KeyFile" ){
+
+		return keyType::name::keyKeyFile ;
+
+	}else if( e == "HMAC+KeyFile" ){
+
+		return keyType::name::hmacKeyFile ;
+
+	}else if( e == "YubiKey Challenge/Response" ){
+
+		return keyType::name::yubikey ;
+
+	}else if( e == "ExternalExecutable" ){
+
+		return keyType::name::externalExecutable ;
+
+	}else if( e == "Internal Wallet" ){
+
+		return keyType::name::internalWallet ;
+
+	}else if( e == "Gnome Wallet" ){
+
+		return keyType::name::libsecret ;
+
+	}else if( e == "Kde Wallet" ){
+
+		return keyType::name::kdewallet ;
+
+	}else if( e == "OSX KeyChain" ){
+
+		return keyType::name::osxkeychain ;
+
+	}else if( e == "Windows DPAPI" ){
+
+		return keyType::name::windowsdpapi ;
+	}else{
+		return keyType::name::Key ;
+	}
+}
+
 void keyDialog::keyType::keyOptions( QComboBox * s,keyDialog * object,void( keyDialog::*method )() )
 {
 	m_comboBox = s ;
@@ -1944,39 +2154,43 @@ void keyDialog::keyType::keyOptions( QComboBox * s,keyDialog * object,void( keyD
 	this->addItem( keyType::name::yubikey,tr( "YubiKey Challenge/Response" ) ) ;
 	this->addItem( keyType::name::externalExecutable,tr( "ExternalExecutable" ) ) ;
 
-	if( LXQt::Wallet::backEndIsSupported( LXQt::Wallet::BackEnd::internal ) ){
+	favorites2::getAvailableWallets( [ this ]( const favorites2::walletOpts::status& s ){
 
-		this->addItem( keyType::name::internalWallet,tr( "Internal Wallet" ) ) ;
-	}
+		if( s.internal ){
 
-	if( LXQt::Wallet::backEndIsSupported( LXQt::Wallet::BackEnd::libsecret ) ){
+			this->addItem( keyType::name::internalWallet,tr( "Internal Wallet" ) ) ;
+		}
 
-		this->addItem( keyType::name::libsecret,tr( "Gnome Wallet" ) ) ;
-	}
+		if( s.gnomeWallet ){
 
-	if( LXQt::Wallet::backEndIsSupported( LXQt::Wallet::BackEnd::kwallet ) ){
+			this->addItem( keyType::name::libsecret,tr( "Gnome Wallet" ) ) ;
+		}
 
-		this->addItem( keyType::name::kdewallet,tr( "Kde Wallet" ) ) ;
-	}
+		if( s.kdeWallet ){
 
-	if( LXQt::Wallet::backEndIsSupported( LXQt::Wallet::BackEnd::osxkeychain ) ){
+			this->addItem( keyType::name::kdewallet,tr( "Kde Wallet" ) ) ;
+		}
 
-		this->addItem( keyType::name::kdewallet,tr( "OSX KeyChain" ) ) ;
-	}
+		if( s.osxkeychain ){
 
-	if( LXQt::Wallet::backEndIsSupported( LXQt::Wallet::BackEnd::windows_dpapi ) ){
+			this->addItem( keyType::name::kdewallet,tr( "OSX KeyChain" ) ) ;
+		}
 
-		this->addItem( keyType::name::windowsdpapi,tr( "Windows DPAPI" ) ) ;
-	}
+		if( s.windows_dpapi ){
+
+			this->addItem( keyType::name::windowsdpapi,tr( "Windows DPAPI" ) ) ;
+		}
+	} ) ;
 
 	this->setAsKey() ;
 
-	connect( m_comboBox,static_cast< void( QComboBox::* )( int ) >( &QComboBox::currentIndexChanged ),
-		 [ this,function = utility2::make_mem_fn( object,method ) ]( int e ){
+	auto m = static_cast< void( QComboBox::* )( int ) >( &QComboBox::currentIndexChanged ) ;
+
+	connect( m_comboBox,m,[ this,object,method ]( int e ){
 
 		if( e >= 0 && e < static_cast< int >( m_entries.size() ) ){
 
-			function() ;
+			( object->*method )() ;
 		}
 	} ) ;
 }

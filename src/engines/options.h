@@ -44,8 +44,8 @@ class options : public QDialog
 {
 	Q_OBJECT
 public:
-	struct Options{
-
+	struct Options
+	{
 		engines::engine::mOpts mOpts ;
 		bool enableCheckBox = true ;
 		bool checkBoxChecked = true ;
@@ -54,6 +54,7 @@ public:
 		bool enableConfigFile = true ;
 		bool enableKeyFile = true ;
 
+		QString idleTimeOutText ;
 		QString checkBoxText ;
 		QString keyFileTitle ;
 
@@ -79,12 +80,11 @@ public:
 	~options() ;
 	void ShowUI() ;
 	Options& GUIOptions() ;
-private slots:
-        void pbConfigFile( void ) ;
+private:
+	void pbConfigFile( void ) ;
 	void pbKeyFile( void ) ;
 	void pbSet( void ) ;
 	void pbCancel( void ) ;
-private:
 	void Hide( const engines::engine::mOpts& = engines::engine::mOpts() ) ;
 	void closeEvent( QCloseEvent * ) ;
 	Ui::options * m_ui ;

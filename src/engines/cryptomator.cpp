@@ -25,6 +25,8 @@
 
 #include "../crypto.h"
 
+#include "../utils/threads.hpp"
+
 static engines::engine::BaseOptions _setOptions()
 {
 	engines::engine::BaseOptions s ;
@@ -49,40 +51,246 @@ static engines::engine::BaseOptions _setOptions()
 	s.setsCipherPath        = true ;
 	s.acceptsSubType        = true ;
 	s.acceptsVolName        = false ;
-	s.releaseURL            = "https://api.github.com/repos/mhogomchungu/cli/releases" ;
+	s.releaseURL            = "https://api.github.com/repos/cryptomator/cli/releases" ;
 	s.passwordFormat        = "" ;
 	s.configFileArgument    = "" ;
 	s.keyFileArgument       = "" ;
-
 	s.incorrectPasswordText    = QStringList{ "InvalidPassphraseException" } ;
-	s.executableNames          = QStringList{ "cryptomator-cli","cryptomator-cli.jar" } ;
 	s.volumePropertiesCommands = QStringList{} ;
-	s.windowsUnMountCommand    = QStringList{} ;
-	s.configFileNames          = QStringList{ "masterkey.cryptomator" } ;
+	s.configFileNames          = QStringList{ "vault.cryptomator" } ;
 	s.fuseNames                = QStringList{ "fuse.cryptomator" } ;
 	s.names                    = QStringList{ "cryptomator" } ;
 	s.failedToMountList        = QStringList{ " ERROR ","Exception","fuse: unknown option" } ;
-	s.successfulMountedList    = QStringList{ "Mounted to" } ;
+	s.successfulMountedList    = QStringList{ "Unlocked and mounted vault successfully" } ;
 	s.notFoundCode             = engines::engine::status::engineExecutableNotFound ;
 	s.versionInfo              = { { "--version",true,0,0 } } ;
-	s.versionMinimum           = "0.4.5" ;
-
-	s.mountControlStructure    = "--foreground --vault %{cipherFolder} --fusemount %{mountPoint} --mountFlags %{fuseOpts}" ;
+	s.versionMinimum           = "0.6.0" ;
 	s.createControlStructure   = "" ;
+	s.executableNames          = QStringList{ "cryptomator-cli" } ;
+
+	QString m = "unlock --password:stdin --mounter=%1 --mountPoint %{mountPoint} %{cipherFolder}" ;
+
+	if( utility::platformIsWindows() ){
+
+		s.windowsUnMountCommand = QStringList{ "sirikali.exe", "-T","%{PID}" } ;
+
+		auto a = "org.cryptomator.frontend.fuse.mount.WinFspMountProvider" ;
+
+		s.mountControlStructure = m.arg( a ) ;
+	}else{
+		s.unMountCommand = QStringList{ "kill","-s","SIGTERM","%{PID}" } ;
+
+		auto a = "org.cryptomator.frontend.fuse.mount.LinuxFuseMountProvider" ;
+
+		s.mountControlStructure = m.arg( a ) ;
+	}
 
 	return s ;
 }
 
 cryptomator::cryptomator() :
 	engines::engine( _setOptions() ),
-	m_version_greater_or_equal_0_4_5( false,*this,this->minimumVersion() )
+	m_version_greater_or_equal_0_6_0( true,*this,this->minimumVersion() )
 {
+}
+
+bool cryptomator::updatable( bool s ) const
+{
+	if( s ){
+
+		utility::CPU cpu ;
+
+		if( utility::platformIsFlatPak() ){			
+
+			return cpu.aarch64() || cpu.x86_64() ;
+
+		}else if( utility::platformIsWindows() ){
+
+			return cpu.x86_64() ;
+		}else{
+			return false ;
+		}
+	}else{
+		return false ;
+	}
+}
+
+void cryptomator::deleteBinPath( const QString& e ) const
+{
+	auto m = e + "/cryptomator-cli" ;
+
+	if( QFile::exists( e ) ){
+
+		auto p = m + ".old" ;
+
+		QDir().rename( m,p ) ;
+
+		utils::qthread::run( [ p ](){
+
+			QDir( p ).removeRecursively() ;
+		} ) ;
+	}
+}
+
+bool cryptomator::onlineArchiveFileName( const QString& e ) const
+{
+	if( utility::platformIsLinux() ){
+
+		utility::CPU cpu ;
+
+		if( cpu.x86_64() ){
+
+			return e.endsWith( "linux-x64.zip" ) ;
+
+		}else if( cpu.aarch64() ){
+
+			return e.endsWith( "linux-aarch64.zip" ) ;
+		}else{
+			return false ;
+		}
+
+	}else if( utility::platformIsWindows() ){
+
+		return e.endsWith( "win-x64.zip" ) ;
+	}else{
+		return false ;
+	}
+}
+
+bool cryptomator::enginesMatch( const QString& e ) const
+{
+	return this->name() + "-cli" == e ;
+}
+
+void cryptomator::setUpBinary( bool add,QStringList& apps,const QString& basePath ) const
+{
+	auto m = basePath + "/cryptomator-cli/" ;
+
+	engines::engine::setUpBinary( add,apps,m,"cryptomator-cli" ) ;
+}
+
+engines::engine::terminate_result
+cryptomator::terminateProcess( int attempts,const engines::engine::terminate_process& e ) const
+{
+	if( utility::platformIsFlatPak() ){
+
+		utility::logger logger ;
+
+		const auto& exe = this->fuserMountPath() ;
+
+		QStringList args{ "-u",e.mountPath() } ;
+
+		const auto& env = this->getProcessEnvironment() ;
+
+		logger.showText( exe,args ) ;
+
+		auto m = utility::unwrap( Task::process::run( exe,args,-1,"",env ) ) ;
+
+		logger.showText( m ) ;
+
+		if( m.success() ){
+
+			return engines::engine::terminateProcess( attempts,e ) ;
+		}else{
+			for( int i = 1 ; i < attempts ; i++ ){
+
+				logger.showText( exe,args ) ;
+
+				utility::Task::suspendForOneSecond() ;
+
+				m = utility::unwrap( Task::process::run( exe,args,-1,"",env ) ) ;
+
+				logger.showText( m ) ;
+
+				if( m.success() ){
+
+					return engines::engine::terminateProcess( attempts,e ) ;
+				}
+			}
+		}
+
+		return { std::move( m ),std::move( exe ),std::move( args ) } ;
+	}else{
+		return engines::engine::terminateProcess( attempts,e ) ;
+	}
+}
+
+QString cryptomator::setExecutablePermissions( const QString& e ) const
+{
+	if( utility::platformIsNOTWindows() ){
+
+		if( QFile::exists( e + "/target" ) ){
+
+			QDir().rename( e + "/target/cryptomator-cli",e + "/cryptomator-cli" ) ;
+
+			QDir( e + "/target" ).removeRecursively() ;
+		}
+
+		auto m = e + "/cryptomator-cli/bin/cryptomator-cli" ;
+
+		QFile f( m ) ;
+
+		f.setPermissions( f.permissions() | QFileDevice::ExeOwner ) ;
+
+		return m ;
+	}else{
+		return e + "/cryptomator-cli/cryptomator-cli.exe" ;
+	}
+}
+
+void cryptomator::changeEnvironment( const QString&,const QStringList& args ) const
+{
+	if( args.size() > 1 ){
+
+		auto m = QFileInfo( args[ 1 ] ).dir().absolutePath() ;
+
+		QDir::setCurrent( m ) ;
+	}
+}
+
+engines::engine::args cryptomator::command( const QByteArray& password,const cmdArgsList& args,bool create ) const
+{
+	if( utility::platformIsFlatPak() ){
+
+		auto m = engines::engine::command( password,args,create ) ;
+
+		m.cmd_args.prepend( m.cmd ) ;
+		m.cmd_args.prepend( "--host" ) ;
+
+		m.cmd = "flatpak-spawn" ;
+
+		return m ;
+	}else{
+		return engines::engine::command( password,args,create ) ;
+	}
+}
+
+void cryptomator::updateOptions( QStringList& opts,
+				 const engines::engine::cmdArgsList& args,
+				 bool create ) const
+{
+	for( int i = 0 ; i < opts.size() ; i++ ){
+
+		if( opts[ i ] == "--mountPoint" && i + 1 < opts.size() ){
+
+			opts[ i ] += "=" + opts[ i + 1 ] ;
+
+			opts.removeAt( i + 1 ) ;
+
+			break ;
+		}
+	}
+
+	if( !create && args.boolOptions.unlockInReadOnly ){
+
+		opts.insert( opts.size() - 2,"--mountOption=-oro" ) ;
+	}
 }
 
 engines::engine::ownsCipherFolder cryptomator::ownsCipherPath( const QString& cipherPath,
 							       const QString& configPath ) const
 {
-	bool s = utility::pathExists( cipherPath + "/masterkey.cryptomator" ) ;
+	bool s = utility::pathExists( cipherPath + "/vault.cryptomator" ) ;
 
 	return { s,cipherPath,configPath } ;
 }
@@ -103,7 +311,7 @@ void cryptomator::GUIMountOptions( const engines::engine::mountGUIOptions& s ) c
 
 engines::engine::status cryptomator::passAllRequirenments( const engines::engine::cmdArgsList& opt ) const
 {
-	if( m_version_greater_or_equal_0_4_5 ){
+	if( m_version_greater_or_equal_0_6_0 ){
 
 		return engines::engine::passAllRequirenments( opt ) ;
 	}else{

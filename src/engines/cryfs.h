@@ -24,6 +24,14 @@ class cryfs : public engines::engine
 public:
 	cryfs() ;
 
+	bool updatable( bool ) const override ;
+
+	void setUpBinary( bool,QStringList&,const QString& ) const override ;
+
+	bool onlineArchiveFileName( const QString& ) const override ;
+
+	engines::engine::args command( const QByteArray&,const engines::engine::cmdArgsList&,bool ) const override ;
+
 	bool takesTooLongToUnlock() const override ;
 
 	engines::engine::cmdStatus commandStatus( const engines::engine::commandStatusOpts& ) const override ;
@@ -42,6 +50,4 @@ public:
 private:
 	QProcessEnvironment setEnv() const ;
 	const QProcessEnvironment m_env ;
-	const engines::versionGreaterOrEqual m_version_greater_or_equal_0_10_0 ;
-	const engines::versionGreaterOrEqual m_version_greater_or_equal_0_9_9 ;
 } ;

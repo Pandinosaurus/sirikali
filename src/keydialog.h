@@ -163,7 +163,8 @@ class keyDialog : public QDialog
 {
 	Q_OBJECT
 public:
-	struct entry{
+	struct entry
+	{
 		entry()
 		{
 		}
@@ -229,7 +230,7 @@ public:
 			      std::function< void() > cancel,
 			      std::function< void() > updateList,
 			      bool o,
-			      const QString& m,
+			      const cmd::exe& m,
 			      const QString& exe )
 	{
 		new keyDialog( parent,s,std::move( cancel ),std::move( updateList),o,m,exe ) ;
@@ -237,7 +238,7 @@ public:
 	static void instance( QWidget * parent,
 			      secrets& s,
 			      bool o,
-			      const QString& m,
+			      const cmd::exe& m,
 			      keyDialog::volumeList e,
 			      std::function< void() > function,
 			      std::function< void() > updateList )
@@ -253,7 +254,7 @@ public:
 	keyDialog( QWidget * parent,
 		   secrets&,
 		   bool,
-		   const QString&,
+		   const cmd::exe&,
 		   keyDialog::volumeList,
 		   std::function< void() >,
 		   std::function< void() > ) ;
@@ -262,59 +263,64 @@ public:
 		   std::function< void() >,
 		   std::function< void() >,
 		   bool,
-		   const QString&,
+		   const cmd::exe&,
 		   const QString& ) ;
 	~keyDialog() ;
 signals:
 	void mounted( QString ) ;
 	void cryptoOpen( QString ) ;
-private slots:
-    void cbVisibleKeyclicked() ;
+private:
+	void cbVisibleKeyclicked() ;
 	void textChanged( QString ) ;
 	void passWordTextChanged( QString ) ;
-	void pbOptions( void ) ;
-	void pbkeyOption( void ) ;
-	void pbMountPointPath( void ) ;
-	void pbFolderPath( void ) ;
-	void pbOK( void ) ;
-	void pbOpen( void ) ;
-	void pbCancel( void ) ;
-	void cbMountReadOnlyStateChanged( int ) ;
-	void encryptedFolderMount( void ) ;
-	void encryptedFolderCreate( void ) ;
-	void pbSetKeyKeyFile( void ) ;
-	void pbSetKey( void ) ;
-	void pbSetKeyCancel( void ) ;
-private :
-	void key( void ) ;
-	void yubiKey( void ) ;
-	void secretStorage( void ) ;
+	void pbOptions() ;
+	void pbkeyOption() ;
+	void pbMountPointPath() ;
+	void pbFolderPath() ;
+	void pbOK() ;
+	void pbOpen() ;
+	void cbMountReadOnlyStateChanged( bool ) ;
+	void encryptedFolderMount() ;
+	void encryptedFolderMount( const QString&,bool ) ;
+	void encryptedFolderCreate() ;
+	void encryptedFolderCreate( const QString&,const QString&,bool ) ;
+	void pbSetKeyKeyFile() ;
+	void pbSetKey() ;
+	void pbSetKeyCancel() ;
+	void pbCancel() ;
+	void key() ;
+	void yubiKey() ;
+	void secretStorage() ;
 	void autoMount( const keyDialog::entry& ee ) ;
-	void unlockVolume( void ) ;
+	void unlockVolume() ;
 	void setVolumeToUnlock() ;
 	void setUpVolumeProperties( const keyDialog::entry& e ) ;
 	void setUpInitUI() ;
 	void setKeyEnabled( bool ) ;
-	void setDefaultUI( void ) ;
+	void setDefaultUI() ;
 	void SetUISetKey( bool ) ;
-	void ShowUI( void ) ;
-	void HideUI( void ) ;
+	void ShowUI() ;
+	void HideUI() ;
 	void setKeyInWallet() ;
+	void enableAllx() ;
 	void setKeyInWallet( const QString& volumeType,const QString& title ) ;
 	void showErrorMessage( const engines::engine::cmdStatus& ) ;
 	void showErrorMessage( const QString& ) ;
 	void reportErrorMessage( const engines::engine::cmdStatus& ) ;
 	void openMountPoint( const QString& ) ;
-	void keyFile( void ) ;
+	void keyFile() ;
 	void setUIVisible( bool ) ;
-	void openVolume( void ) ;
-	void enableAll( void ) ;
-	void disableAll( void ) ;
+	void openVolume() ;
+	void enableAll() ;
+	void disableAll() ;
 	void windowSetTitle( const QString& = QString() ) ;
 	void closeEvent( QCloseEvent * ) ;
 
-	bool upgradingFileSystem( void ) ;
-	bool replaceFileSystem( void ) ;
+	secrets::wallet getBackendStorage() ;
+	void walletOpened( secrets::wallet&,const QString& ) ;
+
+	bool upgradingFileSystem() ;
+	bool replaceFileSystem() ;
 
 	void keyTypeChanged() ;
 
@@ -333,7 +339,7 @@ private :
 	QString m_path ;
 	QString m_deviceOffSet ;
 	QString m_exe ;
-	QString m_fileManagerOpen ;
+	const cmd::exe& m_fileManagerOpen ;
 
 	bool m_autoOpenMountPoint ;
 	bool m_working ;
@@ -387,6 +393,7 @@ private :
 				 yubikey,
 				 externalExecutable } ;
 
+		static keyType::name fromString( const QString& ) ;
 		void setType( keyType::name s ) ;
 		bool key() const ;
 		void setAsKey() ;
@@ -452,7 +459,7 @@ private :
 
 				set = false ;
 
-				auto s = secret.walletBk( bk ) ;
+				secrets::wallet s = secret.walletBk( bk ) ;
 
 				s->setImage( QIcon( ":/sirikali" ) ) ;
 

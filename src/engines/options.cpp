@@ -39,20 +39,18 @@ options::options( const engines::engine& engine,const engines::engine::mountGUIO
 
 	this->setFixedSize( this->size() ) ;
 
-	m_ui->pbConfigFile->setIcon( QIcon( ":/file.png" ) ) ;
+	m_ui->pbConfigFile->setIcon( QIcon( ":/icons/file.png" ) ) ;
 
-	m_ui->pbKeyFile->setIcon( QIcon( ":/file.png" ) ) ;
+	m_ui->pbKeyFile->setIcon( QIcon( ":/icons/file.png" ) ) ;
 
 	this->setWindowIcon( QIcon( ":/sirikali.png" ) ) ;
 
-	connect( m_ui->pbConfigFile,SIGNAL( clicked() ),this,SLOT( pbConfigFile() ) ) ;
+	connect( m_ui->pbConfigFile,&QPushButton::clicked,this,&options::pbConfigFile ) ;
+	connect( m_ui->pbKeyFile,&QPushButton::clicked,this,&options::pbKeyFile ) ;
+	connect( m_ui->pbOK,&QPushButton::clicked,this,&options::pbSet ) ;
+	connect( m_ui->pbCancel,&QPushButton::clicked,this,&options::pbCancel ) ;
 
-	connect( m_ui->pbKeyFile,SIGNAL( clicked() ),this,SLOT( pbKeyFile() ) ) ;
-
-	connect( m_ui->pbOK,SIGNAL( clicked() ),this,SLOT( pbSet() ) ) ;
-	connect( m_ui->pbCancel,SIGNAL( clicked() ),this,SLOT( pbCancel() ) ) ;
-
-	connect( m_ui->checkBox,&QCheckBox::stateChanged,[ this ]( bool e ){
+	utility::connectQCheckBox( m_ui->checkBox,[ this ]( bool e ){
 
 		m_setGUIOptions.checkBoxChecked = e ;
 	} ) ;
@@ -169,6 +167,11 @@ void options::ShowUI()
 	m_ui->checkBox->setChecked( e.checkBoxChecked ) ;
 
 	m_ui->checkBox->setText( e.checkBoxText ) ;
+
+	if( !e.idleTimeOutText.isEmpty() ){
+
+		m_ui->labelIdleTimeout->setText( e.idleTimeOutText ) ;
+	}
 
 	[ this ](){
 

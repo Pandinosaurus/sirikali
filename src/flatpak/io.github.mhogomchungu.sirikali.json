@@ -1,0 +1,408 @@
+{
+  "app-id" : "io.github.mhogomchungu.sirikali",
+  "runtime" : "org.kde.Platform",
+  "runtime-version" : "6.10",
+  "sdk" : "org.kde.Sdk",
+  "command" : "io.github.mhogomchungu.sirikali",
+  "finish-args" : [
+    "--share=ipc",
+    "--socket=wayland",
+    "--socket=fallback-x11",
+    "--filesystem=xdg-documents",
+    "--share=network",
+    "--device=dri",
+    "--talk-name=org.kde.StatusNotifierWatcher",
+    "--talk-name=org.kde.kwalletd5",
+    "--talk-name=org.freedesktop.Flatpak"
+  ],
+  "modules" : [
+    {
+      "name" : "libfuse",
+      "buildsystem" : "autotools",
+      "cleanup" : [
+        "/include",
+        "/lib/pkgconfig",
+        "*.a",
+        "*.la",
+        "/lib/libulockmgr*"
+      ],
+      "config-opts" : [
+        "--disable-util"
+      ],
+      "sources" : [
+        {
+          "type" : "archive",
+          "url" : "https://github.com/libfuse/libfuse/releases/download/fuse-2.9.9/fuse-2.9.9.tar.gz",
+          "sha256" : "d0e69d5d608cc22ff4843791ad097f554dd32540ddc9bed7638cc6fea7c1b4b5"
+        },
+        {
+          "type" : "patch",
+          "paths" : [
+            "patches/fuse-disable-sys-mount-under-flatpak.patch",
+            "patches/fuse-2.9.2-namespace-conflict-fix.patch",
+            "patches/fuse-closefrom.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "name" : "absl",
+      "buildsystem" : "cmake-ninja",
+      "config-opts" : [
+        "-DCMAKE_BUILD_TYPE=Release"
+      ],
+      "cleanup" : [
+        "*"
+      ],
+      "sources" : [
+        {
+          "type" : "archive",
+          "url" : "https://github.com/abseil/abseil-cpp/releases/download/20240722.0/abseil-cpp-20240722.0.tar.gz",
+          "sha256" : "f50e5ac311a81382da7fa75b97310e4b9006474f9560ac46f54a9967f07d4ae3"
+        }
+      ]
+    },
+    {
+      "name" : "cryptopp-cmake",
+      "buildsystem" : "cmake-ninja",
+      "cleanup" : [
+        "*"
+      ],
+      "config-opts" : [
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCRYPTOPP_SOURCES=src/deps/cryptopp1",
+        "-DCRYPTOPP_BUILD_TESTING=OFF",
+        "-DCRYPTOPP_BUILD_DOCUMENTATION=OFF"
+      ],
+      "sources" : [
+        {
+          "type" : "archive",
+          "url" : "https://github.com/abdes/cryptopp-cmake/archive/refs/tags/CRYPTOPP_8_9_0.tar.gz",
+          "sha256" : "191d69061c56602de1610ebf03b44dcf75636006e7e60ef8105bee6472ec0caf"
+        },
+        {
+          "type" : "archive",
+          "url" : "https://github.com/weidai11/cryptopp/archive/refs/tags/CRYPTOPP_8_9_0.tar.gz",
+          "sha256" : "ab5174b9b5c6236588e15a1aa1aaecb6658cdbe09501c7981ac8db276a24d9ab",
+          "dest" : "src/deps/cryptopp1"
+        }
+      ]
+    },
+    {
+      "name" : "uni-algo",
+      "buildsystem" : "cmake-ninja",
+      "config-opts" : [
+        "-DCMAKE_BUILD_TYPE=Release"
+      ],
+      "cleanup" : [
+        "*"
+      ],
+      "sources" : [
+        {
+          "type" : "archive",
+          "url" : "https://github.com/uni-algo/uni-algo/archive/refs/tags/v1.2.0.tar.gz",
+          "sha256" : "f2a1539cd8635bc6088d05144a73ecfe7b4d74ee0361fabed6f87f9f19e74ca9"
+        }
+      ]
+    },
+    {
+      "name" : "protobuf",
+      "buildsystem" : "cmake-ninja",
+      "cleanup" : [
+        "*"
+      ],
+      "config-opts" : [
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-Dprotobuf_BUILD_TESTS=OFF",
+        "-Dprotobuf_BUILD_CONFORMANCE=OFF",
+        "-Dprotobuf_ABSL_PROVIDER=package"
+      ],
+      "sources" : [
+        {
+          "type" : "archive",
+          "url" : "https://github.com/protocolbuffers/protobuf/releases/download/v28.2/protobuf-28.2.tar.gz",
+          "sha256" : "b2340aa47faf7ef10a0328190319d3f3bee1b24f426d4ce8f4253b6f27ce16db"
+        }
+      ]
+    },
+    {
+      "name" : "argon2",
+      "buildsystem" : "cmake-ninja",
+      "cleanup" : [
+        "*"
+      ],
+      "sources" : [
+        {
+          "type" : "file",
+          "url" : "https://raw.githubusercontent.com/microsoft/vcpkg/98aa6396292d57e737a6ef999d4225ca488859d5/ports/argon2/CMakeLists.txt",
+          "sha256" : "55492f7b05cdcb2c3fd78abc1bedad79e9c8186623a7ff91bdd4582fd3f07992"
+        },
+        {
+          "type" : "file",
+          "url" : "https://raw.githubusercontent.com/microsoft/vcpkg/98aa6396292d57e737a6ef999d4225ca488859d5/ports/argon2/unofficial-argon2-config.cmake",
+          "sha256" : "0ba4414821d7f76edef65af4d2c15fd4dfbafe8a6ef5da43155267c8e41817f3"
+        },
+        {
+          "type" : "archive",
+          "url" : "https://github.com/P-H-C/phc-winner-argon2/archive/refs/tags/20190702.tar.gz",
+          "sha256" : "daf972a89577f8772602bf2eb38b6a3dd3d922bf5724d45e7f9589b5e830442c"
+        }
+      ]
+    },
+    {
+      "name" : "fruit",
+      "buildsystem" : "cmake-ninja",
+      "cleanup" : [
+        "/include",
+        "/lib/pkgconfig",
+        "*.a"
+      ],
+      "config-opts" : [
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DFRUIT_USES_BOOST=False",
+        "-DBUILD_SHARED_LIBS=FALSE",
+        "-DCMAKE_POLICY_VERSION_MINIMUM=4.0"
+      ],
+      "sources" : [
+        {
+          "type" : "archive",
+          "url" : "https://github.com/google/fruit/archive/refs/tags/v3.7.1.tar.gz",
+          "sha256" : "ed4c6b7ebfbf75e14a74e21eb74ce2703b8485bfc9e660b1c36fb7fe363172d0"
+        }
+      ]
+    },
+    {
+      "name" : "sqlite3",
+      "buildsystem" : "autotools",
+      "cleanup" : [
+        "*"
+      ],
+      "config-opts" : [
+        "--enable-shared=no",
+        "--prefix=/app"
+      ],
+      "sources" : [
+        {
+          "type" : "archive",
+          "url" : "https://www.sqlite.org/2024/sqlite-autoconf-3460100.tar.gz",
+          "sha256" : "67d3fe6d268e6eaddcae3727fce58fcc8e9c53869bdd07a0c61e38ddf2965071"
+        }
+      ]
+    },
+    {
+      "name" : "securefs",
+      "buildsystem" : "cmake-ninja",
+      "config-opts" : [
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DSECUREFS_USE_VCPKG=FALSE",
+        "-DSECUREFS_ENABLE_UNIT_TEST=FALSE",
+        "-DTCLAP_INCLUDE_DIRS=tclap/include"
+      ],
+      "sources" : [
+        {
+          "type" : "archive",
+          "url" : "https://github.com/mirror/tclap/archive/refs/tags/v1.2.5.tar.gz",
+          "sha256" : "7e87d13734076fa4f626f6144ce9a02717198b3f054341a6886e2107b048b235",
+          "dest" : "tclap"
+        },
+        {
+          "type" : "archive",
+          "url" : "https://github.com/netheril96/securefs/archive/refs/tags/v2.0.0.tar.gz",
+          "sha256" : "d7fac7adc70c09473173aeadee5b7041d7e63fbf392ef40bdd77888590bb12a2"
+        },
+        {
+          "type" : "patch",
+          "paths" : [
+            "patches/securefs.patch",
+            "patches/securefs-version.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "name" : "gocryptfs",
+      "buildsystem" : "simple",
+      "build-commands" : [
+        "ln -s `pwd`/go/bin/go /app/bin/go",
+        "`pwd`/build-without-openssl.bash",
+        "make install",
+        "rm -rf /app/bin/go"
+      ],
+      "cleanup" : [],
+      "config-opts" : [],
+      "sources" : [
+        {
+          "type" : "archive",
+          "url" : "https://github.com/rfjakob/gocryptfs/releases/download/v2.6.1/gocryptfs_v2.6.1_src-deps.tar.gz",
+          "sha256" : "9a966c1340a1a1d92073091643687b1205c46b57017c5da2bf7e97e3f5729a5a"
+        },
+        {
+          "type" : "patch",
+          "paths" : [
+            "patches/gocryptfs.patch",
+            "patches/gocryptfs_version.patch"
+          ]
+        },
+        {
+          "type" : "archive",
+          "only-arches" : [
+            "x86_64"
+          ],
+          "url" : "https://go.dev/dl/go1.23.2.linux-amd64.tar.gz",
+          "sha256" : "542d3c1705f1c6a1c5a80d5dc62e2e45171af291e755d591c5e6531ef63b454e",
+          "dest" : "go"
+        },
+        {
+          "type" : "archive",
+          "only-arches" : [
+            "aarch64"
+          ],
+          "url" : "https://go.dev/dl/go1.23.2.linux-arm64.tar.gz",
+          "sha256" : "f626cdd92fc21a88b31c1251f419c17782933a42903db87a174ce74eeecc66a9",
+          "dest" : "go"
+        }
+      ]
+    },
+    {
+      "name" : "range-v3",
+      "buildsystem" : "cmake-ninja",
+      "config-opts" : [
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DRANGE_V3_TESTS=OFF",
+        "-DRANGE_V3_EXAMPLES=OFF"
+      ],
+      "cleanup" : [
+        "*"
+      ],
+      "sources" : [
+        {
+          "type" : "archive",
+          "url" : "https://github.com/ericniebler/range-v3/archive/refs/tags/0.12.0.tar.gz",
+          "sha256" : "015adb2300a98edfceaf0725beec3337f542af4915cec4d0b89fa0886f4ba9cb"
+        }
+      ]
+    },
+    {
+      "name" : "spdlog",
+      "buildsystem" : "cmake-ninja",
+      "config-opts" : [
+        "-DCMAKE_BUILD_TYPE=Release"
+      ],
+      "cleanup" : [
+        "*"
+      ],
+      "sources" : [
+        {
+          "type" : "archive",
+          "url" : "https://github.com/gabime/spdlog/archive/refs/tags/v1.14.1.tar.gz",
+          "sha256" : "1586508029a7d0670dfcb2d97575dcdc242d3868a259742b69f100801ab4e16b"
+        }
+      ]
+    },
+    {
+      "name" : "boost",
+      "buildsystem" : "simple",
+      "build-commands" : [
+        "`pwd`/bootstrap.sh --prefix=/app",
+        "`pwd`/b2 install --prefix=/app"
+      ],
+      "cleanup" : [
+        "*"
+      ],
+      "config-opts" : [],
+      "sources" : [
+        {
+          "type" : "archive",
+          "url" : "https://archives.boost.io/release/1.86.0/source/boost_1_86_0.tar.gz",
+          "sha256" : "2575e74ffc3ef1cd0babac2c1ee8bdb5782a0ee672b1912da40e5b4b591ca01f"
+        }
+      ]
+    },
+    {
+      "name" : "cryfs",
+      "buildsystem" : "cmake-ninja",
+      "config-opts" : [
+        "-DCMAKE_BUILD_TYPE=RELEASE",
+        "-DCRYFS_UPDATE_CHECKS=FALSE",
+        "-DDISABLE_OPENMP=OFF",
+        "-DBoost_USE_STATIC_LIBS=ON"
+      ],
+      "cleanup" : [
+        "/share/*"
+      ],
+      "sources" : [
+        {
+          "type" : "archive",
+          "url" : "https://github.com/cryfs/cryfs/archive/refs/tags/1.0.3.tar.gz",
+          "sha256" : "6742551505cc6b6b387279353627a27a93a3461b34284ba94666c365ad6cfcfd"
+        },
+        {
+          "type" : "patch",
+          "paths" : [
+            "patches/cryfs.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "name" : "libpwquality",
+      "buildsystem" : "autotools",
+      "config-opts" : [],
+      "cleanup" : [
+        "/include/*",
+        "/app/share/*",
+        "/lib/pkgconfig/*",
+        "/bin/*",
+        "/etc",
+        "/man/*",
+        "/locale/*",
+        "/lib/libpwquality.la",
+        "/lib/libpwquality.a",
+        "/lib/libpwquality.so",
+        "/share/*",
+        "/lib/python3.11"
+      ],
+      "sources" : [
+        {
+          "type" : "archive",
+          "url" : "https://github.com/libpwquality/libpwquality/releases/download/libpwquality-1.4.5/libpwquality-1.4.5.tar.bz2",
+          "sha256" : "6fcf18b75d305d99d04d2e42982ed5b787a081af2842220ed63287a2d6a10988"
+        }
+      ]
+    },
+    {
+      "name" : "lxqt_wallet",
+      "buildsystem" : "cmake-ninja",
+      "config-opts" : [
+        "-DCMAKE_BUILD_TYPE=RELEASE"
+      ],
+      "cleanup" : [
+        "/lib/pkgconfig/lxqt-wallet.pc",
+        "/include/lxqt/lxqt_wallet.h",
+        "/lib/liblxqt-wallet.so",
+        "/bin/lxqt_wallet-cli"
+      ],
+      "sources" : [
+        {
+          "type" : "archive",
+          "url" : "https://github.com/lxqt/lxqt_wallet/releases/download/4.0.2/lxqt-wallet-4.0.2.tar.xz",
+          "sha256" : "3dbfc24555e88f6dd8aa79c2bf22e455f82d6a332e95418b08788d7adc226e50"
+        }
+      ]
+    },
+    {
+      "name" : "io.github.mhogomchungu.sirikali",
+      "buildsystem" : "cmake",
+      "config-opts" : [
+        "-DCMAKE_BUILD_TYPE=release",
+        "-DBUILD_FLATPAK=TRUE"
+      ],
+      "sources" : [
+        {
+          "type" : "dir",
+          "path" : "../.."
+        }
+      ]
+    }
+  ]
+}

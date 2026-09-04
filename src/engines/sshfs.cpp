@@ -78,6 +78,11 @@ static engines::engine::BaseOptions _setOptions()
 		s.autoCreatesMountPoint = false ;
 		s.autoDeletesMountPoint = false ;
 		s.defaultFavoritesMountOptions = "idmap=user,StrictHostKeyChecking=no" ;
+
+		if( utility::platformIsOSX() ){
+
+			s.unMountCommand = QStringList{ "umount","%{mountPoint}" } ;
+		}
 	}
 
 	return s ;
@@ -89,6 +94,7 @@ sshfs::sshfs() :
 	m_version_greater_or_equal_minimum( false,*this,this->minimumVersion() ),
 	m_sshAuthSock( qgetenv( "SSH_AUTH_SOCK" ) )
 {
+	Q_UNUSED( m_version_greater_or_equal_minimum )
 }
 
 bool sshfs::requiresAPassword( const engines::engine::cmdArgsList& e ) const
@@ -105,6 +111,9 @@ engines::engine::status sshfs::passAllRequirenments( const engines::engine::cmdA
 {
 	if( utility::platformIsWindows() ){
 
+		return engines::engine::passAllRequirenments( opt ) ;
+
+		/*
 		auto m = engines::engine::passAllRequirenments( opt ) ;
 
 		if( m != engines::engine::status::success ){
@@ -117,6 +126,7 @@ engines::engine::status sshfs::passAllRequirenments( const engines::engine::cmdA
 		}else{
 			return engines::engine::status::backEndFailedToMeetMinimumRequirenment ;
 		}
+		*/
 	}else{
 		return engines::engine::passAllRequirenments( opt ) ;
 	}

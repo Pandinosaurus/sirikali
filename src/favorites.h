@@ -31,7 +31,8 @@
 class favorites
 {
 public:
-	class triState{
+	class triState
+	{
 	public:
 		triState() : m_state( triState::STATES::UNDEFINED )
 		{
@@ -92,7 +93,7 @@ public:
 					json[ entry ] = "false" ;
 				}
 			}else{
-				json[ entry ] = "" ;
+				json[ entry ] = "false" ;
 			}
 		}
 		static void readTriState( SirikaliJson& json,
@@ -101,9 +102,11 @@ public:
 		{
 			auto s = json.getString( entry ) ;
 
-			if( !s.isEmpty() ){
+			if( s.isEmpty() || s == "false" ){
 
-				state = s == "true" ? true : false ;
+				state = false ;
+			}else{
+				state = true ;
 			}
 		}
 	private:
@@ -135,6 +138,7 @@ public:
 		QString preUnmountCommand ;
 		QString postUnmountCommand ;
 		QString internalConfigPath ;
+		QString passwordSource ;
 
 		QByteArray password ;
 
@@ -143,6 +147,9 @@ public:
 
 		favorites::triState readOnlyMode ;
 		favorites::triState autoMount ;
+
+		bool match( const QString& cipherPath,const QString& mountPath ) const ;
+		QString volumePathOpenMode() const ;
 	};
 
 	static favorites& instance()
@@ -151,7 +158,8 @@ public:
 		return m ;
 	}
 
-	class volEntry{
+	class volEntry
+	{
 	public:
 		volEntry() : m_favorite( std::addressof( favorites::entry::empty() ) )
 		{
@@ -263,6 +271,12 @@ public:
 
 	favorites() ;
 private:
+	enum class PathFormat{ New,Old,Older,Oldest,Ancient } ;
+	static QString createPath( const QString&,const favorites::entry&,PathFormat ) ;
+	static utility::qstring_result configPath() ;
+	static void updateFavorites( favorites::entry& ) ;
+	static utility2::result< favorites::entry > fromPath( const QString& ) ;
+	static QString findPath( const favorites::entry& e ) ;
 	void reload() ;
 	std::vector< favorites::entry > m_favorites ;
 };

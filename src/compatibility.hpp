@@ -85,7 +85,54 @@ struct QStorageInfo
 
 #include <sys/inotify.h>
 
+template< typename ... Args >
+int sirikali_select( Args&& ... args )
+{
+	return select( std::forward< Args >( args ) ... ) ;
+}
+
+class sirikali_fd_set
+{
+public:
+	fd_set * get()
+	{
+		return &m_fd_set ;
+	}
+	void zero()
+	{
+		FD_ZERO( this->get() ) ;
+	}
+	void set( int fd )
+	{
+		FD_SET( fd,this->get() ) ;
+	}
+private:
+	fd_set m_fd_set ;
+};
+
 #else
+
+template< typename ... Args >
+int sirikali_select( Args&& ... )
+{
+	return -1 ;
+}
+
+class sirikali_fd_set
+{
+public:
+	int * get()
+	{
+		return nullptr ;
+	}
+	void zero()
+	{
+	}
+	void set( int )
+	{
+	}
+private:
+};
 
 const static int IN_CREATE = 0 ;
 const static int IN_DELETE = 0 ;
@@ -139,34 +186,6 @@ static inline int poll( struct pollfd * a,int b,int c )
 	Q_UNUSED( c )
 
 	return 0 ;
-}
-
-typedef struct
-{
-	int foo ;
-}fd_set ;
-
-static inline int select( int a,fd_set * b,fd_set * c,fd_set * d,struct timeval * e )
-{
-	Q_UNUSED( a )
-	Q_UNUSED( b )
-	Q_UNUSED( c )
-	Q_UNUSED( d )
-	Q_UNUSED( e )
-
-	return -1 ;
-}
-
-static inline void FD_ZERO( fd_set * e )
-{
-	Q_UNUSED( e )
-}
-
-static inline void FD_SET( int fd,fd_set * e )
-{
-	Q_UNUSED( fd )
-
-	Q_UNUSED( e )
 }
 
 static inline int getuid()

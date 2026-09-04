@@ -1392,13 +1392,19 @@ int lxqt_wallet_exists(const char *wallet_name, const char *application_name)
 
 void lxqt_wallet_application_wallet_path(char *path, u_int32_t path_buffer_size, const char *application_name)
 {
-    struct passwd *pass = getpwuid(getuid());
-    snprintf(path, path_buffer_size, "%s/.config/lxqt/wallets/%s/", pass->pw_dir, application_name);
+    const char *env = getenv("XDG_CONFIG_HOME");
+
+    if(env){
+	snprintf(path, path_buffer_size, "%s/lxqt/wallets/%s/", env, application_name);
+    }else{
+	struct passwd *pass = getpwuid(getuid());
+	snprintf(path, path_buffer_size, "%s/.config/lxqt/wallets/%s/", pass->pw_dir, application_name);
+    }
 }
 
 static char *_wallet_full_path(char *path_buffer, u_int32_t path_buffer_size, const char *wallet_name, const char *application_name)
 {
-    char path_1[ PATH_MAX ];
+    char path_1[PATH_MAX];
     lxqt_wallet_application_wallet_path(path_1, sizeof (path_1), application_name);
     snprintf(path_buffer, path_buffer_size, "%s/%s%s", path_1, wallet_name, WALLET_EXTENSION);
     return path_buffer;

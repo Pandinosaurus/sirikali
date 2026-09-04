@@ -30,15 +30,15 @@
 #include <QDir>
 #include <QtGlobal>
 #include <QTranslator>
-
+#include "cmd.hpp"
 #include "lxqt_wallet.h"
-#include "favorites.h"
 #include "engines.h"
 #include <vector>
 #include <array>
 #include <functional>
 
-class settings{
+class settings
+{
 public:
 	class walletBackEnd
 	{
@@ -79,7 +79,8 @@ public:
 		LXQt::Wallet::BackEnd m_storage ;
 	};
 
-	class windowDimensions{
+	class windowDimensions
+	{
 	public:
 		static constexpr int size = 8 ;
 		windowDimensions( const QStringList& e ) ;
@@ -94,6 +95,41 @@ public:
 		std::array< int,size > m_array ;
 		bool m_ok = false ;
 	};
+
+	class flatpakRuntimeOptions
+	{
+	public:
+		flatpakRuntimeOptions() ;
+
+		const QString& globalBinPath() const
+		{
+			return m_globalBinPath ;
+		}
+		const QString& architecture() const
+		{
+			return m_architecture ;
+		}
+		const QString& commitId() const
+		{
+			return m_commitId ;
+		}
+		const QString& localBinPath() const
+		{
+			return m_localBinPath ;
+		}
+		const QString& runtimePath() const
+		{
+			return m_runtimePath ;
+		}
+	private:
+		QString flatpkakInfoFile() ;
+		QSettings m_settings ;
+		QString m_globalBinPath ;
+		QString m_architecture ;
+		QString m_commitId ;
+		QString m_runtimePath ;
+		QString m_localBinPath ;
+	} ;
 
 	class translator
 	{
@@ -112,7 +148,7 @@ public:
 			const char * UINameUnTranslated ;
 			QString internalName ;
 		} ;
-		void clear( void ) ;
+		void clear() ;
 		QTranslator * m_translator = nullptr ;
 		std::vector< entry > m_languages ;
 	} ;
@@ -126,10 +162,15 @@ public:
 	static bool portableVersion() ;
 	static QString portableVersionConfigPath() ;
 
+	const flatpakRuntimeOptions& flatpakIntance() ;
+
 	settings::windowDimensions getWindowDimensions() ;
 	void setWindowDimensions( const settings::windowDimensions& ) ;
 	settings() ;
 
+	bool flatpakUpdated() ;
+	bool showSystemTray() ;
+	void setShowSystemTray( bool ) ;
 	bool showCipherFolderAndMountPathInFavoritesList() ;
 	int pollForUpdatesInterval() ;
 	int sshfsBackendTimeout() ;
@@ -148,7 +189,7 @@ public:
 	bool enableRevealingPasswords() ;
 	void scaleGUI() ;
 	void setParent( QWidget * parent,QWidget ** localParent,QDialog * dialog ) ;
-	QString fileManager() ;
+	cmd::exe fileManager() ;
 	QStringList openWith() ;
 	QString readPassword( bool addNewLine ) ;
 	QString mountPath() ;
@@ -158,7 +199,7 @@ public:
 	bool enableHighDpiScaling() ;
 	void enableHighDpiScaling( bool ) ;
 	void showDebugWindowOnStartup( bool ) ;
-	bool showDebugWindowOnStartup( void ) ;
+	bool showDebugWindowOnStartup() ;
 	QByteArray enabledHighDpiScalingFactor() ;
 	void enabledHighDpiScalingFactor( const QString& ) ;
 	void removeKey( const QString& ) ;
@@ -188,13 +229,14 @@ public:
 	bool doNotShowReadOnlyWarning() ;
 	void doNotShowReadOnlyWarning( bool ) ;
 	bool autoMountFavoritesOnStartUp() ;
-	bool useDarkMode() ;
-	void useDarkMode( bool ) ;
+	enum class themeType{ platformDefault,dark,light } ;
+	themeType getThemeType() ;
+	void setThemeType( themeType ) ;
 	void autoMountFavoritesOnStartUp( bool ) ;
 	void autoMountFavoritesOnAvailable( bool ) ;
 	bool autoMountFavoritesOnAvailable() ;
 	void showFavoritesInContextMenu( bool ) ;
-	bool showFavoritesInContextMenu( void ) ;
+	bool showFavoritesInContextMenu() ;
 	int networkTimeOut() ;
 	bool showMountDialogWhenAutoMounting() ;
 	bool showUnlockedVolumesFromAllUsers() ;
@@ -219,19 +261,26 @@ public:
 	QString localizationLanguagePath() ;
 	void languageMenu( QMenu * m,QAction * ac,settings::translator& ) ;
 	void setLocalizationLanguage( bool translate,QMenu * m,settings::translator& ) ;
-	QString walletName( void ) ;
-	QString applicationName( void ) ;
+	QString walletName() ;
+	QString applicationName() ;
 	int readPasswordMaximumLength() ;
-	bool unMountVolumesOnLogout( void ) ;
-	QStringList mountMonitorFolderPaths( void ) ;
-	QStringList supportedFileSystemsOnMountPaths( void ) ;
-	QString gvfsFuseMonitorPath( void ) ;
-	int mountMonitorFolderPollingInterval( void ) ;
+	bool unMountVolumesOnLogout() ;
+	QStringList mountMonitorFolderPaths() ;
+	QStringList supportedFileSystemsOnMountPaths() ;
+	QString gvfsFuseMonitorPath() ;
+	int mountMonitorFolderPollingInterval() ;
 	int delayBeforeAutoMountAtStartup() ;
+	bool internallyManageBackEnds() ;
+	void setInternallyManageBackEnds( bool ) ;
 private:
+	bool cipherPathRepeats( const std::vector< favorites::entry >& ) ;
+	bool showCipherPathAndMountPath( bool ) ;
+	bool enableEntry( const QString& e ) ;
+	QAction * addAaction( QMenu * m,const QString& e,const QString& s,const QString& ) ;
 	std::unique_ptr< QSettings > m_settingsP ;
 	QSettings& m_settings ;
 	bool m_portableVersion ;
+	flatpakRuntimeOptions m_flatpakRuntimeOptions ;
 };
 
 #endif //SETTINGS_H

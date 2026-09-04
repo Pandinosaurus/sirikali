@@ -277,3 +277,82 @@ version 1.4.2(December 18,2019)
    version 1.5.1(July 10, 2023)
    [NON WINDOWS]
 -- Folders specified in PATH variable will be checked when looking for executables.
+
+   version 1.6.0(May 09, 2024)
+   [ALL]
+-- Add support for building with Qt6.
+-- Add support for securefs version >= 1.0.0.
+
+   version 1.7.0(November 09, 2024)
+   [WINDOWS]
+-- Internally manage securefs and make it possible to update it from within the app.
+   [LINUX]
+-- Internally manage gocryptfs and securefs and make it possible to update them from within the app.
+  [FLATPAK]
+-- Bundle Cryfs along side Securefs and Gocryptfs.
+
+   version 1.7.1(November 13, 2024)
+    [WINDOWS]
+-- Internally manage securefs and make it possible to update it from within the app.
+    The ability is set to "off" by default and can be enabled in the settings menu.
+    [LINUX]
+-- Internally manage gocryptfs and securefs and make it possible to update them from within the app.
+    The ability is set to "off" by default and can be enabled in the settings menu.
+
+   version 1.7.2(November 19, 2024)
+    [WINDOWS]
+-- Fix API breakage in Cryfs version 1.0.0.
+-- Do not check for minimum version of sshfs-win.
+
+   version 1.8.0(January 01, 2025)
+    [WINDOWS]
+-- Make it possible to install cppcryptfs and cryptomator from within the app.
+-- Minimum supported version of cryptomator is 0.6.0.
+    [LINUX]
+-- Make it possible to install cryptomator from within the app.
+-- Minimum supported version of cryptomator is 0.6.0 and works in flatpak version only.
+
+   version 1.8.1(January 22, 2025)
+    [WINDOWS]
+-- Qt6 build now depends on version 6.8.1. This update prevents crashing when using cppcryptfs.
+    [LINUX]
+-- Disable eCryptfs support because ecryptfs-simple project is dead.
+    [FLATPAK]
+-- Update gocryptfs to version 2.5.0.
+-- Update KDE runtime to version 6.8.
+
+   version 1.8.2(April 20, 2025)
+   [ALL]
+-- Fix a build error when building with Qt >= 6.9.
+-- Add UI config for 3 theme options and they are platform default, light theme and dark theme.
+
+   version 1.8.3(August 19th, 2025)
+   [WINDOWS and FLATPAK]
+-- Fix a bug that caused the app to close instead of minimizing to tray.
+   [ALL]
+-- Fix a bug that caused unlocked favorites on the tray menu to show up twice.
+-- Add a GUI option to show or hide a tray icon.
+
+   version 1.8.4(October 10th, 2025)
+   [FLATPAK]
+-- Update gocryptfs to version 2.6.1.
+-- Update securefs to version 2.0.0.
+   [WINDOWS]
+-- Fix a breaking change in cppcryptfs.
+   [ALL]
+-- Fix app not minimizing to tray on other platforms too other than windows.
+-- Add support for securefs 2.0.0
+
+   version 1.8.5(January 27th, 2026)
+   [FLATPAK]
+-- Improve how backends interact with the host system.
+-- Update Cryfs to version 1.0.3.
+-- Update Kde platform to version 6.10.
+   [ALL]
+-- Maintanance release.
+
+   version 1.8.6(March 6th, 2026)
+   [ALL]
+-- Make it possible to set in favorites the key source to unlock a volume.
+-- Fix a bug that caused an option to unlock a window without showing password dialog to be ignored.
+-- Add Polish translations.

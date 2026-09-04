@@ -65,6 +65,11 @@ static engines::engine::BaseOptions _setOptions()
 	s.notFoundCode          = engines::engine::status::engineExecutableNotFound ;
 	s.versionInfo           = { { "--version",false,2,0 } } ;
 
+	if( utility::platformIsOSX() ){
+
+		s.unMountCommand = QStringList{ "umount","%{mountPoint}" } ;
+	}
+
 	if( utility::platformIsWindows() ){
 
 		s.autoCreatesMountPoint = true ;
@@ -139,11 +144,11 @@ void encfs::GUIMountOptions( const engines::engine::mountGUIOptions& s ) const
 
 	ee.updateOptions = []( const ::options::Options& s ){
 
-		engines::engine::booleanOptions e ;
+		engines::engine::booleanOptions bo ;
 
-		e.unlockInReverseMode = s.checkBoxChecked ;
+		bo.unlockInReverseMode = s.checkBoxChecked ;
 
-		return e ;
+		return bo ;
 	} ;
 
 	e.ShowUI() ;

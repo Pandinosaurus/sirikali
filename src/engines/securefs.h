@@ -24,6 +24,16 @@ class securefs : public engines::engine
 public:
 	securefs() ;
 
+	bool updatable( bool ) const override ;
+
+	void setUpBinary( bool,QStringList&,const QString& ) const override ;
+
+	void removeExtraFiles( const QString& ) const override ;
+
+	bool onlineArchiveFileName( const QString& ) const override ;
+
+	engines::engine::args command( const QByteArray&,const engines::engine::cmdArgsList&,bool ) const override ;
+
 	engines::engine::cmdStatus commandStatus( const engines::engine::commandStatusOpts& ) const override ;
 
 	engines::engine::status errorCode( const QString&,const QString&,int s ) const override ;
@@ -42,8 +52,6 @@ public:
 			    const engines::engine::cmdArgsList& args,
 			    bool creating ) const override ;
 private:
+	bool useLogFile() const ;
 	QByteArray extraLogOutput( const engines::engine::args& ) const ;
-
-	const engines::versionGreaterOrEqual m_version_greater_or_equal_0_11_1 ;
-	const engines::versionGreaterOrEqual m_version_greater_or_equal_1_0_0 ;
 } ;

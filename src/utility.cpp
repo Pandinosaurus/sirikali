@@ -17,6 +17,8 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "flatpak.h"
+
 #include "utility.h"
 
 #include <iostream>
@@ -36,6 +38,7 @@
 #include <QTranslator>
 #include <QEventLoop>
 #include <QDebug>
+#include <QSysInfo>
 #include <QCoreApplication>
 #include <QApplication>
 #include <QByteArray>
@@ -45,6 +48,7 @@
 #include <QDir>
 #include <QTableWidget>
 #include <QMessageBox>
+#include <QDesktopServices>
 #include <QTableWidgetItem>
 #include <QProcessEnvironment>
 #include <QtNetwork/QLocalSocket>
@@ -72,11 +76,15 @@
 #include "siriPolkit.h"
 #include "settings.h"
 #include "version.h"
-#include "runinthread.h"
 
 #ifdef Q_OS_LINUX
 
 #include <sys/vfs.h>
+
+static bool _windows_open_path( const QString& )
+{
+	return false ;
+}
 
 bool utility::platformIsLinux()
 {
@@ -100,6 +108,11 @@ bool utility::platformIsWindows()
 #include <sys/param.h>
 #include <sys/mount.h>
 
+static bool _windows_open_path( const QString& )
+{
+	return false ;
+}
+
 bool utility::platformIsLinux()
 {
 	return false ;
@@ -118,6 +131,55 @@ bool utility::platformIsWindows()
 #endif
 
 #ifdef Q_OS_WIN
+
+#include <windows.h>
+
+#include <shlobj.h>
+
+static std::wstring _get_first_entry( const QString& e )
+{
+	auto s = e.toStdWString() ;
+
+	if( *s.rbegin() == L'\\' ){
+
+		s += L"*" ;
+	}else{
+		s += L"\\*" ;
+	}
+
+	WIN32_FIND_DATAW data ;
+
+	memset( &data.cFileName,'\0',sizeof( data.cFileName ) ) ;
+
+	auto handle = FindFirstFileW( s.data(),&data ) ;
+
+	if( handle == INVALID_HANDLE_VALUE ){
+
+		return e.toStdWString() ;
+	}else{
+		FindClose( handle ) ;
+
+		s = e.toStdWString() ;
+		s += L"\\" ;
+		s += data.cFileName ;
+
+		return s ;
+	}
+}
+
+static void _windows_open_path( const QString& e )
+{
+	auto path = _get_first_entry( e ) ;
+
+	auto pidl = ILCreateFromPathW( path.c_str() ) ;
+
+	if( pidl ){
+
+		SHOpenFolderAndSelectItems( pidl,0,nullptr,0 ) ;
+
+		ILFree( pidl ) ;
+	}
+}
 
 bool utility::platformIsLinux()
 {
@@ -310,20 +372,27 @@ utility::debug utility::debug::operator<<( const QString& e )
 	return utility::debug() ;
 }
 
+static bool _firstTime = true ;
+
 void utility::applicationStarted()
 {
-	utility::miscOptions::instance().doneStarting() ;
+	if( _firstTime ){
 
-	const auto& m = utility::miscOptions::instance() ;
+		_firstTime = false ;
 
-	const auto& e = m.getStartingLogs() ;
+		auto& m = utility::miscOptions::instance() ;
 
-	if( !e.isEmpty() ){
+		m.doneStarting() ;
 
-		QString a = "***********Start early logs************" ;
-		QString b = "\n\n***********End early logs*****************" ;
+		const auto& e = m.getStartingLogs() ;
 
-		utility::logger().enableDebug().showText( a + e + b ).showDebugWindow() ;
+		if( !e.isEmpty() ){
+
+			QString a = "***********Start early logs************" ;
+			QString b = "\n\n***********End early logs*****************" ;
+
+			utility::logger().enableDebug().showText( a + e + b ).showDebugWindow() ;
+		}
 	}
 }
 
@@ -429,7 +498,7 @@ void utility::initGlobals()
 
 	auto& m = utility::miscOptions::instance() ;
 
-	m.setCurrentThreadAsMain() ;
+	m.setCurrentThreadAsMain() ;	
 
 	m.setEnableDebug( settings::instance().showDebugWindowOnStartup() ) ;
 
@@ -497,35 +566,58 @@ void utility::quitHelper()
 	}
 }
 
-::Task::future<bool>& utility::openPath( const QString& path,const QString& opener )
-{
-	return ::Task::run( [ = ](){
-
-		return utility::Task::run( opener,{ path } ).get().failed() ;
-	} ) ;
-}
-
-void utility::openPath( const QString& path,const QString& opener,
+void utility::openPath( const QString& path,const cmd::exe& fm,
 			QWidget * obj,const QString& title,const QString& msg )
 {
 	if( !path.isEmpty() ){
 
-		openPath( path,opener ).then( [ title,msg,obj ]( bool failed ){
+		if( utility::platformIsWindows() && fm.command() == "Default" ){
 
-			if( utility::platformIsNOTWindows() ){
+			_windows_open_path( path ) ;
 
-				if( failed && obj ){
+		}else if( utility::platformIsFlatPak() ){
 
-					DialogMsg( obj ).ShowUIOK( title,msg ) ;
-				}
+			logger l ;
+
+			auto args = fm.addArgs( path ) ;
+
+			l.showText( fm.command(),args ) ;
+
+			if( QProcess::startDetached( fm.command(),args ) ){
+
+				l.showText( ::Task::process::result( 0 ) ) ;
+			}else{
+				l.showText( ::Task::process::result( 1 ) ) ;
 			}
-		} ) ;
+		}else{
+			auto& e = utility::Task::run( fm.command(),fm.addArgs( path ) ) ;
+
+			e.then( [ title,msg,obj ]( const utility::Task& e ){
+
+				if( utility::platformIsNOTWindows() ){
+
+					if( e.failed() && obj ){
+
+						DialogMsg( obj ).ShowUIOK( title,msg ) ;
+					}
+				}
+			} ) ;
+		}
 	}
+}
+
+static QString _version_string()
+{
+	QString s = VERSION_STRING ;
+
+	s.replace( ".git_tag","" ) ;
+
+	return s ;
 }
 
 static bool _help()
 {
-	utility::debug::cout() << VERSION_STRING << QObject::tr( "\n\
+	utility::debug::cout() << _version_string() << QObject::tr( "\n\
 options:\n\
 	-d   Path to where a volume to be auto unlocked/mounted is located.\n\
 	-m   Tool to use to open a default file manager(default tool is xdg-open).\n\
@@ -685,7 +777,7 @@ This program is distributed in the hope that it will be useful,\
 but WITHOUT ANY WARRANTY; without even the implied warranty of \
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the \
 GNU General Public License for more details.\n\
-" ).arg( VERSION_STRING ) ;
+" ).arg( _version_string() ) ;
 
 	DialogMsg( parent,nullptr ).ShowUIInfo( QObject::tr( "about SiriKali" ),true,license ) ;
 }
@@ -702,20 +794,27 @@ QStringList utility::directoryList( const QString& e )
 	return s ;
 }
 
-QIcon utility::getIcon( iconType type )
+static QIcon _icon()
 {
-	if( utility::platformIsLinux() ){
+	if( utility::platformIsFlatPak() ){
 
-		QIcon icon( INSTALL_PREFIX "/share/icons/hicolor/48x48/apps/sirikali.png" ) ;
+		return QIcon( INSTALL_PREFIX "/share/icons/hicolor/48x48/apps/io.github.mhogomchungu.sirikali.png" ) ;
 
-		if( type == utility::iconType::trayIcon ){
+	}else if( utility::platformIsLinux() ){
 
-			return QIcon::fromTheme( "sirikali-panel",icon ) ;
-		}else{
-			return QIcon::fromTheme( "sirikali",icon ) ;
-		}
+		return QIcon( INSTALL_PREFIX "/share/icons/hicolor/48x48/apps/sirikali.png" ) ;
 	}else{
 		return QIcon( ":sirikali" ) ;
+	}
+}
+
+QIcon utility::getIcon( iconType type )
+{
+	if( type == utility::iconType::trayIcon ){
+
+		return QIcon::fromTheme( "sirikali-panel",_icon() ) ;
+	}else{
+		return QIcon::fromTheme( "sirikali",_icon() ) ;
 	}
 }
 
@@ -874,18 +973,13 @@ bool utility::createFolder( const QString& m )
 	}
 }
 
-bool utility::removeFolder( const QString& e,int attempts )
+static bool _removeFolder( const QString& mountPath,int attempts )
 {
-	if( utility::isDriveLetter( e ) ){
-
-		return true ;
-	}
-
 	QDir dir ;
 
-	dir.rmdir( e ) ;
+	dir.rmdir( mountPath ) ;
 
-	if( utility::pathNotExists( e ) ){
+	if( utility::pathNotExists( mountPath ) ){
 
 		return true ;
 	}else{
@@ -893,15 +987,56 @@ bool utility::removeFolder( const QString& e,int attempts )
 
 			utility::waitForOneSecond() ;
 
-			dir.rmdir( e ) ;
+			dir.rmdir( mountPath ) ;
 
-			if( utility::pathNotExists( e ) ){
+			if( utility::pathNotExists( mountPath ) ){
 
 				return true ;
 			}
 		}
 
 		return false ;
+	}
+}
+
+bool utility::removeFolder( const QString& mountPath,int attempts )
+{
+	if( utility::platformIsFlatPak() ){
+
+		if( mountPath.startsWith( settings::instance().homePath() ) ){
+
+			return _removeFolder( mountPath,attempts ) ;
+		}else{
+			auto exe = "flatpak-spawn" ;
+
+			QStringList args{ "--host","rmdir",mountPath } ;
+
+			auto env = QProcessEnvironment::systemEnvironment() ;
+
+			utility::logger logger ;
+
+			logger.showText( exe,args ) ;
+
+			for( int i = 0 ; i < attempts ; i++ ){
+
+				auto mm = ::Task::process::run( exe,args,-1,{},env ).await() ;
+
+				logger.showText( mm ) ;
+
+				if( mm.success() ){
+
+					return true ;
+				}
+			}
+
+			return false ;
+		}
+
+	}else if( utility::isDriveLetter( mountPath ) ){
+
+		return true ;
+	}else{
+		return _removeFolder( mountPath,attempts ) ;
 	}
 }
 
@@ -990,7 +1125,8 @@ QByteArray utility::readPassword( bool addNewLine )
 
 const QProcessEnvironment& utility::systemEnvironment()
 {
-	static class sysEnv{
+	static class sysEnv
+	{
 	public:
 		sysEnv() : m_QProcessEnvironment( QProcessEnvironment::systemEnvironment() )
 		{
@@ -1139,7 +1275,7 @@ static void _setWindowsMountMountOptions( QWidget * obj,E e,QPushButton * s )
 	menu->addActions( actions ) ;
 
 	s->setMenu( menu ) ;
-	s->setIcon( QIcon( ":/harddrive.png" ) ) ;
+    s->setIcon( QIcon( ":/icons/harddrive.png" ) ) ;
 }
 
 void utility::setWindowsMountPointOptions( QWidget * obj,QTextEdit * e,QPushButton * s )
@@ -1150,11 +1286,6 @@ void utility::setWindowsMountPointOptions( QWidget * obj,QTextEdit * e,QPushButt
 void utility::setWindowsMountPointOptions( QWidget * obj,QLineEdit * e,QPushButton * s )
 {
 	_setWindowsMountMountOptions( obj,e,s ) ;
-}
-
-void utility::runInUiThread( std::function< void() > function )
-{
-	runInThread::instance( utility::miscOptions::instance().getMainGUIThread(),std::move( function ) ) ;
 }
 
 void utility::waitForOneSecond()
@@ -1318,7 +1449,6 @@ QString utility::removeLastPathComponent( const QString& e,char separator )
 	return separator + s.join( separator ) ;
 }
 
-
 QString utility::likeSshaddPortNumber( const QString& path,const QString& port )
 {
 	return path + settings::instance().portSeparator() + port ;
@@ -1475,7 +1605,11 @@ utility::logger& utility::logger::enableDebug()
 
 QString utility::SiriKaliVersion()
 {
-	return THIS_VERSION ;
+	QString s = THIS_VERSION ;
+
+	s.replace( ".git_tag","" ) ;
+
+	return s ;
 }
 
 #ifdef Q_OS_WIN
@@ -1603,4 +1737,119 @@ QStringList utility::splitPreserveQuotes( const QString& e )
 #else
 	return QProcess::splitCommand( e ) ;
 #endif
+}
+
+#if FLATPAK
+
+bool utility::platformIsFlatPak()
+{
+	return true ;
+}
+
+#else
+
+bool utility::platformIsFlatPak()
+{
+	return false ;
+}
+
+#endif
+
+bool utility::copyFile( const QString& s,const QString& d,bool setExePermssion )
+{
+	QFile src( s ) ;
+
+	if( src.open( QIODevice::ReadOnly ) ){
+
+		QFile dst( d ) ;
+
+		if( dst.open( QIODevice::WriteOnly | QIODevice::Truncate ) ){
+
+			std::array< char,1024 > buffer ;
+
+			while( true ){
+
+				auto m = src.read( buffer.data(),buffer.size() ) ;
+
+				if( m > 0 ){
+
+					dst.write( buffer.data(),m ) ;
+				}else{
+					if( src.size() == dst.size() ){
+
+						if( setExePermssion ){
+
+							auto s = dst.permissions() | QFileDevice::ExeOwner ;
+
+							dst.setPermissions( s ) ;
+						}
+
+						return true ;
+					}else{
+						dst.remove() ;
+
+						return false ;
+					}
+				}
+			}
+		}
+	}
+
+	return false ;
+}
+
+utility::CPU::CPU() : m_cpu( this->getCPU() )
+{
+}
+
+bool utility::CPU::x86_32() const
+{
+	return m_cpu == "i386" || m_cpu == "x86_32" ;
+}
+
+bool utility::CPU::x86_64() const
+{
+	return m_cpu == "x86_64" ;
+}
+
+bool utility::CPU::aarch64() const
+{
+	return m_cpu == "arm64" || m_cpu == "aarch64" ;
+}
+
+bool utility::CPU::aarch32() const
+{
+	return m_cpu == "arm" || m_cpu == "aarch32" ;
+}
+
+const QString& utility::CPU::getCPU() const
+{
+#if QT_VERSION >= QT_VERSION_CHECK( 5,4,0 )
+	static QString m = QSysInfo::currentCpuArchitecture() ;
+	return m ;
+#else
+	static QString m = [](){
+
+		if( utility::platformIsLinux() ){
+
+			QFile file( "/proc/sys/kernel/arch" ) ;
+
+			if( file.open( QIODevice::ReadOnly ) ){
+
+				return file.readAll().trimmed() ;
+			}
+		}
+
+		return QByteArray() ;
+	}() ;
+
+	return m ;
+#endif
+}
+
+QString utility::cleanPath( const QString& e )
+{
+	auto m = QDir::cleanPath( e ) ;
+
+	return QDir::toNativeSeparators( m ) ;
 }

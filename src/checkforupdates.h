@@ -20,10 +20,6 @@
 #ifndef CHECKFORUPDATES_H
 #define CHECKFORUPDATES_H
 
-#include "network_support.h"
-
-#if HAS_NETWORK_SUPPORT
-
 #include <QFile>
 #include <QObject>
 #include <QWidget>
@@ -39,24 +35,37 @@
 #include <utility>
 #include <vector>
 
-class checkUpdates
+class sirikali ;
+
+class checkUpdates : public QObject
 {
+	Q_OBJECT
 public:
-	static bool hasNetworkSupport()
-	{
-		return true ;
-	}
+	void checkIfInstalled() ;
 
-	void run( bool e ) ;
+	void run() ;
 
-	checkUpdates( QWidget * widget,checkforupdateswindow::functions ) ;
+	checkUpdates( sirikali * widget ) ;
+signals:
+	void update( const checkforupdateswindow::args& ) ;
+	void done( bool ) ;
+	void doneCheckingUpdates() ;
 private:
-	void check( bool ) ;
-
-	void showResult() ;
+	void networkReply( int,
+			   const engines::engine&,
+			   const QString&,
+			   const utils::network::reply& ) ;
+	void check() ;
 
 	QString InstalledVersion( const engines::engine& ) ;
-	QString latestVersion( const QByteArray& data ) ;
+
+	struct versionData
+	{
+		QString version ;
+		QJsonObject data ;
+	} ;
+
+	versionData latestVersion( const QByteArray& data ) ;
 
 	void checkForUpdate( size_t position = 0 ) ;
 
@@ -64,44 +73,20 @@ private:
 
 	QNetworkRequest m_networkRequest ;
 
-	QVector< QStringList > m_results ;
-
 	int m_timeOut ;
 
 	utils::network::manager m_network ;
 
-	bool m_autocheck ;
-
 	bool m_running ;
 
 	std::vector< engines::engine::Wrapper > m_backends ;
-	checkforupdateswindow::functions m_functions ;
+	std::vector< engines::engine::Wrapper > m_backendsInstallable ;
+
+	std::vector< engines::engine::Wrapper > * m_backendsInUse ;
+
+	QString m_basePath ;
+
+	sirikali& m_sirikali ;
 } ;
-
-#else
-
-#include "checkforupdateswindow.h"
-
-class checkUpdates
-{
-public:
-	static bool hasNetworkSupport()
-	{
-		return false ;
-	}
-
-	void run( bool e )
-	{
-		Q_UNUSED( e )
-	}
-
-	checkUpdates( QWidget * widget,checkforupdateswindow::functions function )
-	{
-		Q_UNUSED( widget )
-		Q_UNUSED( function )
-	}
-} ;
-
-#endif
 
 #endif // CHECKFORUPDATES_H

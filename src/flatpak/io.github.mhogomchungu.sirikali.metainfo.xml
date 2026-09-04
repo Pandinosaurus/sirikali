@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+
+	<id>io.github.mhogomchungu.sirikali</id>
+
+	<name>SiriKali</name>
+
+	<summary>A GUI to Gocryptfs, Securefs, Cryfs</summary>
+
+	<metadata_license>FSFAP</metadata_license>
+
+	<project_license>GPL-2.0-or-later</project_license>
+
+	<url type="homepage">https://mhogomchungu.github.io/sirikali</url>
+	<url type="bugtracker">https://github.com/mhogomchungu/sirikali/issues</url>
+	<url type="vcs-browser">https://github.com/mhogomchungu/sirikali</url>
+	<url type="faq">https://github.com/mhogomchungu/sirikali/wiki/Frequently-Asked-Questions</url>
+
+	<content_rating type="oars-1.1" />
+
+	<developer id="io.github.mhogomchungu">
+		  <name>Francis Banyikwa</name>
+	</developer>
+
+	<description><p>This application makes it easy to use Gocryptfs, Securefs and Cryfs to store documents in secured folders.</p><p>All three tools are bundled with the application</p></description>
+
+	<launchable type="desktop-id">io.github.mhogomchungu.sirikali.desktop</launchable>
+
+	<screenshots>
+		<screenshot  type="default">
+			<caption>Main window with a password dialog window</caption>
+			<image>https://raw.githubusercontent.com/mhogomchungu/sirikali/03f5596db7b4a11bc3d394f5e57f69243e646505/images/Screenshot_20190912_114700.png</image>
+		</screenshot>
+	</screenshots>
+
+	<categories>
+		<category>Utility</category>
+		<category>Qt</category>
+	</categories>
+
+	<releases>
+	<release version="1.8.6" type="stable" date="2025-03-06" >
+		<url type="details">https://github.com/mhogomchungu/sirikali/releases/download/1.8.6/sirikali-1.8.6.tar.xz/</url>
+			<description>
+				<p>Changelog</p>
+				<ul>
+					<li>Make it possible to set in favorites the key source to unlock a volume</li>
+					<li>Fix a bug that caused an option to unlock a window without showing password dialog to be ignored</li>
+					<li>Add Polish translations</li>
+				</ul>
+			</description>
+	</release>
+		<release version="1.8.5" type="stable" date="2025-01-27" >
+		<url type="details">https://github.com/mhogomchungu/sirikali/releases/download/1.8.5/sirikali-1.8.5.tar.xz/</url>
+			<description>
+				<p>Changelog</p>
+				<ul>
+					<li>Improve how backends interact with the host system</li>
+					<li>Update Cryfs to version 1.0.3.</li>
+					<li>Update Kde platform to version 6.10</li>
+				</ul>
+			</description>
+		</release>
+		<release version="1.8.4" type="stable" date="2025-10-10" >
+		<url type="details">https://github.com/mhogomchungu/sirikali/releases/download/1.8.4/sirikali-1.8.4.tar.xz/</url>
+			<description>
+				<p>Changelog</p>
+				<ul>
+					<li>Update gocryptfs to version 2.6.1</li>
+					<li>FUpdate securefs to version 2.0.0</li>
+					<li>Fix various bugs</li>
+				</ul>
+			</description>
+		</release>
+		<release version="1.8.3" type="stable" date="2025-08-25" >
+			<url type="details">https://github.com/mhogomchungu/sirikali/releases/download/1.8.3/sirikali-1.8.3.tar.xz/</url>
+			<description>
+				<p>Changelog</p>
+				<ul>
+					<li>Fix a bug that caused the app to close instead of minimizing to tray.</li>
+					<li>Fix a bug that caused unlocked favorites on the tray menu to show up twice.</li>
+					<li>Add a GUI option to show/hide tray icon.</li>
+				</ul>
+			</description>
+		</release>
+		<release version="1.8.2" type="stable" date="2025-04-20" >
+			<url type="details">https://github.com/mhogomchungu/sirikali/releases/download/$version/sirikali-$version.tar.xz/</url>
+			<description>
+				<p>Changelog</p>
+				<ul>
+					<li>Add UI config for 3 theme options and they are platform default, light theme and dark theme.</li>
+				</ul>
+			</description>
+		</release>
+		<release version="1.8.1" type="stable" date="2025-01-22" >
+			<url type="details">https://github.com/mhogomchungu/sirikali/releases/download/$version/sirikali-$version.tar.xz/</url>
+			<description>
+				<p>Changelog</p>
+				<ul>
+					<li>Update Gocryptfs from version 2.4.0 to version 2.5.0.</li>
+				</ul>
+			</description>
+		</release>
+		<release version="1.8.0" type="stable" date="2025-01-01" >
+			<url type="details">https://github.com/mhogomchungu/sirikali/releases/download/$version/sirikali-$version.tar.xz/</url>
+			<description>
+				<p>Changelog</p>
+				<ul>
+					<li>Update Cryfs to version 1.0.1.</li>
+					<li>Add support for cryptomator-cli 0.6.0.</li>
+					<li>Make it possible to install cryptomator-cli from within the app.</li>
+					<li>Install cryptomator-cli by going to menu->"check for updates"->cryptomator->update.</li>
+				</ul>
+			</description>
+		</release>
+		<release version="1.7.2" type="stable" date="2024-11-19" >
+			<url type="details">https://github.com/mhogomchungu/sirikali/releases/download/$version/sirikali-$version.tar.xz/</url>
+			<description>
+				<p>Changelog</p>
+				<ul>
+					<li>Bundle Cryfs along side Securefs and Gocryptfs</li>
+				</ul>
+			</description>
+		</release>
+		<release version="1.7.1" type="stable" date="2024-11-11" >
+			<url type="details">https://github.com/mhogomchungu/sirikali/releases/download/$version/sirikali-$version.tar.xz/</url>
+			<description>
+				<p>Changelog</p>
+				<ul>
+					<li>Bundle Cryfs along side Securefs and Gocryptfs</li>
+				</ul>
+			</description>
+		</release>
+		<release version="1.7.0." type="stable" date="2024-11-09" >
+			<url type="details">https://github.com/mhogomchungu/sirikali/releases/download/$version/sirikali-$version.tar.xz/</url>
+			<description>
+				<p>Changelog</p>
+				<ul>
+					<li>Bundle Cryfs along side Securefs and Gocryptfs</li>
+				</ul>
+			</description>
+		</release>
+		<release version="1.6.0.5" type="stable" date="2024-10-05" >
+			<url type="details">https://github.com/mhogomchungu/sirikali/releases/download/$version/sirikali-$version.tar.xz/</url>
+			<description>
+				<p>Changelog</p>
+				<ul>
+					<li>Initial Flatpak release</li>
+				</ul>
+			</description>
+		</release>
+	</releases>
+
+	<provides>
+		<binary>io.github.mhogomchungu.sirikali</binary>
+	</provides>
+</component>

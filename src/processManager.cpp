@@ -21,12 +21,6 @@
 
 static const char * _backEndTimedOut = "BackendTimedOut" ;
 
-struct result
-{
-	engines::engine::error type ;
-	QByteArray outPut ;
-} ;
-
 enum class encode{ True,False } ;
 static QString _make_path( QString e,encode s )
 {
@@ -49,7 +43,7 @@ static QString _make_path( QString e,encode s )
 }
 
 template< typename Function >
-static result _read( QProcess& exe,const engines::engine& engine,Function function )
+static processManager::result _read( QProcess& exe,const engines::engine& engine,Function function )
 {
 	QByteArray m ;
 	QByteArray s ;
@@ -106,7 +100,7 @@ static result _read( QProcess& exe,const engines::engine& engine,Function functi
 	return { r,std::move( m ) } ;
 }
 
-static result _getProcessOutput( QProcess& exe,const engines::engine& engine )
+processManager::result processManager::getProcessOutput( QProcess& exe,const engines::engine& engine )
 {
 	int timeOut = engine.backendTimeout() ;
 
@@ -132,6 +126,11 @@ static result _getProcessOutput( QProcess& exe,const engines::engine& engine )
 	}
 }
 
+static Task::process::result _error( const QByteArray& e )
+{
+	return Task::process::result( e,QByteArray(),-1,0,true ) ;
+}
+
 Task::process::result processManager::run( const processManager::opts& s )
 {
 	if( s.create ){
@@ -144,7 +143,11 @@ Task::process::result processManager::run( const processManager::opts& s )
 
 			logger.showText( s.args.cmd,s.args.cmd_args ) ;
 
-			auto m = utility::unwrap( Task::process::run( s.args.cmd,s.args.cmd_args,-1,s.password ) ) ;
+			const auto& env = s.engine.getProcessEnvironment() ;
+
+			auto& e = Task::process::run( s.args.cmd,s.args.cmd_args,-1,s.password,env ) ;
+
+			auto m = utility::unwrap( e ) ;
 
 			logger.showText( m ) ;
 
@@ -160,21 +163,38 @@ bool processManager::backEndTimedOut( const QString& e )
 	return e == _backEndTimedOut ;
 }
 
+static void _change_env( QProcess& exe,const processManager::opts& opts )
+{
+#if QT_VERSION > QT_VERSION_CHECK( 6,0,0 )
+#ifdef Q_OS_WIN
+	exe.setCreateProcessArgumentsModifier( [ & ]( QProcess::CreateProcessArguments * ){
+
+		opts.engine.changeEnvironment( opts.args.cmd,opts.args.cmd_args ) ;
+	} ) ;
+#else
+	exe.setChildProcessModifier( [ & ]{
+
+		opts.engine.changeEnvironment( opts.args.cmd,opts.args.cmd_args ) ;
+	} ) ;
+#endif
+#else
+	Q_UNUSED( exe )
+	Q_UNUSED( opts )
+#endif
+}
+
 Task::process::result processManager::add( const processManager::opts& opts )
 {
-	auto error = []( const QByteArray& e ){
-
-		return Task::process::result( e,QByteArray(),-1,0,true ) ;
-	} ;
-
 	auto e = opts.engine.prepareBackend() ;
 
 	if( !e.isEmpty() ){
 
-		return error( e ) ;
+		return _error( e ) ;
 	}
 
 	auto exe = utility2::unique_qptr< QProcess >() ;
+
+	_change_env( *exe,opts ) ;
 
 	exe->setProcessEnvironment( opts.engine.getProcessEnvironment() ) ;
 	exe->setProcessChannelMode( QProcess::MergedChannels ) ;
@@ -187,79 +207,47 @@ Task::process::result processManager::add( const processManager::opts& opts )
 
 	logger.showText( opts.args.cmd,opts.args.cmd_args ) ;
 
-	auto m = _getProcessOutput( *exe,opts.engine ) ;
-
-	auto s = [ & ](){
-
-		if( m.type == engines::engine::error::Timeout ){
-
-			opts.engine.terminateProcess( { *exe,opts.args.mountPath } ) ;
-
-			return error( _backEndTimedOut ) ;
-
-		}else if( m.type == engines::engine::error::Success ){
-
-			if( exe->state() == QProcess::Running ){
-
-				exe->closeReadChannel( QProcess::StandardError ) ;
-				exe->closeReadChannel( QProcess::StandardOutput ) ;
-
-				this->addEntry( opts,std::move( exe ) ) ;
-
-				m_updateVolumeList() ;
-
-				return Task::process::result( 0 ) ;
-			}else{
-				utility::waitForFinished( *exe ) ;
-
-				auto a = "SiriKali::Error: Backend Reported \"Success\" But Its No Longer Running\nGenerated Logs Are:\n" ;
-
-				QString b = "std error\n----------------------\n" + exe->readAllStandardError() + "\n----------------------\n" ;
-
-				QString c = "std out\n----------------------\n" + exe->readAllStandardOutput() + "\n----------------------\n" ;
-
-				return error( QString( "%1%2%3" ).arg( a,b,c ).toLatin1() ) ;
-			}
-		}else{
-			utility::waitForFinished( *exe ) ;
-
-			return error( m.outPut ) ;
-		}
-	}() ;
+	auto s = this->getResult( std::move( exe ),opts,_error,_backEndTimedOut ) ;
 
 	logger.showText( s ) ;
 
 	return s ;
 }
 
-Task::process::result processManager::remove( const QString& mountPoint )
+Task::process::result processManager::remove( const QString& mountPoint,int attempts )
 {
-	Task::process::result r ;
+	for( auto it = m_instances.begin() ; it != m_instances.end() ; it++ ){
 
-	this->ProcessEntriesAndRemove( [ & ]( const processManager::Process& s )->result{
+		const auto& s = *it ;
 
 		if( s.mountPoint() == mountPoint ){
 
-			auto m = s.engine().terminateProcess( { s.exe(),s.mountPoint() } ) ;
+			auto m = s.engine().terminateProcess( attempts,{ s.exe(),s.engine(),s.mountPoint() } ) ;
 
 			if( m.result.success() ) {
 
-				m_updateVolumeList() ;
+				auto& exe = s.exe() ;
 
-				r = Task::process::result( 0 ) ;
+				for( int i = 0 ; i < 10 ; i++ ){
 
-				return { true,true } ;
+					if( exe.waitForFinished( 100 ) ){
+
+						break ;
+					}
+				}
+
+				m_volumeList->update() ;
+
+				m_instances.erase( it ) ;
+
+				return 0 ;
 			}else{
-				r = Task::process::result( "","Failed To Terminate A Process",1,0,true ) ;
-
-				return { true,false } ;
+				return m.result ;
 			}
-		}else{
-			return { false,false } ;
 		}
-	} ) ;
+	}
 
-	return r ;
+	return { "","Failed To Terminate Unknown Process",1,0,true } ; ;
 }
 
 std::vector<QStringList> processManager::commands() const
@@ -346,10 +334,7 @@ QString processManager::volumeProperties( const QString& mm ) const
 	return m ;
 }
 
-void processManager::updateVolumeList( std::function< void() > function )
-{
-	m_updateVolumeList = std::move( function ) ;
-}
+
 
 std::vector< processManager::mountOpts > processManager::mountOptions() const
 {
@@ -392,24 +377,16 @@ bool processManager::mountPointTaken( const QString& ee ) const
 
 void processManager::removeInActive()
 {
-	auto _remove_inactive = [ & ]{
+	struct meaw
+	{
+		bool operator()( const processManager::Process& p ) const
+		{
+			return p.notRunning() ;
+		}
+	};
 
-		bool entryRemoved = false ;
+	auto begin = m_instances.begin() ;
+	auto end   = m_instances.end() ;
 
-		this->ProcessEntriesAndRemove( [ & ]( const processManager::Process& p )->result{
-
-			if( p.notRunning() ){
-
-				entryRemoved = true ;
-
-				return { true,true } ;
-			}else{
-				return { false,false } ;
-			}
-		} ) ;
-
-		return entryRemoved ;
-	} ;
-
-	while( _remove_inactive() ){}
+	m_instances.erase( std::remove_if( begin,end,meaw() ),end ) ;
 }

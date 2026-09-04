@@ -41,11 +41,13 @@ public:
 	static QString executableNotEngineFullPath( const QString& ) ;
 	static QString executableFullPath( const QString& ) ;
 	static QString executableFullPath( const QString&,const engines::engine& ) ;
+	static QString defaultBinPath() ;
 
 	static QStringList executableSearchPaths() ;
 	static QStringList executableSearchPaths( const engines::engine& ) ;
 
-	class engineVersion{
+	class engineVersion
+	{
 	public:
 		engineVersion() ;
 		engineVersion( int major,int minor,int patch ) ;
@@ -53,15 +55,9 @@ public:
 		bool valid() const ;
 		bool operator==( const engineVersion& other ) const ;
 		bool operator<( const engineVersion& other ) const ;
-		/*
-		 * a != b equal to !(a == b)
-		 * a <= b equal to (a < b) || (a == b)
-		 * a >= b equal to !(a < b)
-		 * a > b  equal to !(a <= b)
-		 */
 		bool operator>=( const engineVersion& other ) const
 		{
-			return !( *this < other ) ;
+			return *this > other || *this == other ;
 		}
 		bool operator<=( const engineVersion& other ) const
 		{
@@ -73,7 +69,7 @@ public:
 		}
 		bool operator>( const engineVersion& other ) const
 		{
-			return !( *this <= other ) ;
+			return !( *this < other || *this == other ) ;
 		}
 		QString toString() const ;
 	private:
@@ -84,7 +80,8 @@ public:
 	};
 
 	template< typename Type >
-	class cache{
+	class cache
+	{
 	public:
 	        cache( std::function< Type() > function ) : m_function( std::move( function ) )
 		{
@@ -106,13 +103,14 @@ public:
 		virtual ~cache()
 		{
 		}
-	private:
+	protected:
 		std::function< Type() > m_function ;
 		mutable Type m_variable ;
 		mutable bool m_unset = true ;
 	};
 
-	class version : public cache< engines::engineVersion >{
+	class version : public cache< engines::engineVersion >
+	{
 	public:
 	        enum class Operator{ less,lessOrEqual,equal,notEqual,greater,greaterOrEqual } ;
 
@@ -124,26 +122,7 @@ public:
 		version()
 		{
 		}
-		utility::bool_result compare( const engines::engineVersion& b,
-					      engines::version::Operator op ) const
-		{
-			const auto& a = this->get() ;
-
-			if( a.valid() && b.valid() ){
-
-			        switch( op ) {
-
-				        case engines::version::Operator::less :           return a < b ;
-				        case engines::version::Operator::lessOrEqual :    return a <= b ;
-				        case engines::version::Operator::equal :          return a == b ;
-				        case engines::version::Operator::notEqual :       return a != b ;
-				        case engines::version::Operator::greater :        return a > b ;
-				        case engines::version::Operator::greaterOrEqual : return a >= b ;
-				}
-			}
-
-			return {} ;
-		}
+		utility::bool_result compare( const engines::engineVersion& b,engines::version::Operator op ) const ;
 		QString toString() const
 		{
 			return this->get().toString() ;
@@ -161,7 +140,8 @@ public:
 		QString m_engineName ;
 	};
 
-	class booleanCache : public cache< utility::bool_result >{
+	class booleanCache : public cache< utility::bool_result >
+	{
 	public:
 		booleanCache( std::function< utility::bool_result() > s ) :
 		        cache( std::move( s ) )
@@ -175,7 +155,8 @@ public:
 		virtual void silenceWarning() ;
 	};
 
-	class versionGreaterOrEqual : public cache< utility::bool_result >{
+	class versionGreaterOrEqual : public cache< utility::bool_result >
+	{
 	public:
 	        versionGreaterOrEqual( bool m,const engines::engine& engine,int major,int minor,int patch ) :
 		        cache( [ this,&engine,m,major,minor,patch ](){ return this->setCallback( m,engine,major,minor,patch ) ; } )
@@ -195,10 +176,18 @@ public:
 		virtual void silenceWarning() ;
 	} ;
 
-	class exeFullPath : public cache< QString >{
+	class exeFullPath : public cache< QString >
+	{
 	public:
-	        exeFullPath( std::function< QString() > s ) : cache( std::move( s ) )
+		template< typename T >
+		exeFullPath( T s ) : cache( std::move( s ) )
 		{
+		}
+		template< typename T >
+		void operator=( T s )
+		{
+			m_function = std::move( s ) ;
+			m_unset = true ;
 		}
 	private:
 		virtual void silenceWarning() ;
@@ -209,15 +198,16 @@ public:
 	protected:
 		class commandOptions ;
 	public:
-		struct unMount{
-
+		struct unMount
+		{
 			const QString& cipherFolder ;
 			const QString& mountPoint ;
 			const engines::engine& engine ;
 			int numberOfAttempts ;
 		} ;
 
-		class Wrapper{
+		class Wrapper
+		{
 		public:
 			Wrapper( const engines::engine& e ) :
 			        m_engine( std::addressof( e ) )
@@ -281,6 +271,7 @@ public:
 
 			failedToStartPolkit,
 			failedToUnMount,
+			failedToUnMountMountPointStillInUse,
 			failedToCreateMountPoint,
 
 			invalidConfigFileName,
@@ -290,7 +281,8 @@ public:
 			unknown
 		} ;
 
-		struct exe_args{
+		struct exe_args
+		{
 			exe_args( QString e,QStringList s ) :
 				exe( std::move( e ) ),args( std::move( s ) )
 			{
@@ -306,7 +298,8 @@ public:
 			QStringList args ;
 		};
 
-		struct exe_args_const{
+		struct exe_args_const
+		{
 			exe_args_const( const exe_args& e ) : exe( e.exe ),args( e.args )
 			{
 			}
@@ -338,8 +331,8 @@ public:
 			engines::engine::Wrapper m_engine ;
 		} ;
 
-		struct booleanOptions{
-
+		struct booleanOptions
+		{
 			booleanOptions() = default ;
 
 			booleanOptions( const booleanOptions& other ) = default ;
@@ -358,8 +351,8 @@ public:
 			bool allowUpgradeFileSystem = false ;
 		} ;
 
-		struct createGUIOptions{
-
+		struct createGUIOptions
+		{
 			struct createOptions
 			{
 				createOptions( const QString& createOpts,
@@ -396,8 +389,8 @@ public:
 			std::function< void( const createGUIOptions::createOptions& ) > fCreateOptions ;
 		};
 
-		struct mountGUIOptions{
-
+		struct mountGUIOptions
+		{
 			struct mountOptions{
 
 				mountOptions( const favorites::entry& ) ;
@@ -562,10 +555,16 @@ public:
 		static const QString& javaFullPath() ;
 		static const QString& fuserMountPath() ;
 
+		template< typename Function >
+		void updateOptions( Function function )
+		{
+			function( m_Options ) ;
+		}
 		bool isInstalled() const ;
 		bool isNotInstalled() const ;
 		bool unknown() const ;
 		bool known() const ;
+		bool forUpdatingOnly() const ;
 		bool setsCipherPath() const ;
 		bool autoMountsOnCreate() const ;
 		bool hasGUICreateOptions() const ;
@@ -588,6 +587,8 @@ public:
 		bool usesFuseArgumentSwitch() const ;
 		bool windowsCanUnlocInReadWriteMode() const ;
 
+		void setUpBinary( bool,QStringList&,const QString&,const QString& ) const ;
+
 		engines::engine::status notFoundCode() const ;
 
 		int backendTimeout() const ;
@@ -604,6 +605,8 @@ public:
 		const QString& defaultFavoritesMountOptions() const ;
 
 		const QString& executableFullPath() const ;
+
+		void updateExecutableFullPath() const ;
 
 		const QString& minimumVersion() const ;
 		const QString& sirikaliMinimumVersion() const ;
@@ -631,14 +634,15 @@ public:
 
 		virtual ~engine() ;
 
-		class terminate_process{
+		class terminate_process
+		{
 		public:
-		        terminate_process( QProcess& exe,const QString& mountPath ) :
-				m_exe( &exe ),m_mountPath( mountPath )
+			terminate_process( QProcess& exe,const engines::engine& engine,const QString& mountPath ) :
+				m_exe( &exe ),m_engine( engine ),m_mountPath( mountPath )
 			{
 			}
-			terminate_process( const QString& mountPath ) :
-				m_exe( nullptr ),m_mountPath( mountPath )
+			terminate_process( const engines::engine& engine,const QString& mountPath ) :
+				m_exe( nullptr ),m_engine( engine ),m_mountPath( mountPath )
 			{
 			}
 			qint64 PID() const
@@ -664,6 +668,10 @@ public:
 					utility::debug() << "Warning, accessing invalid entry in terminate_process::terminate" ;
 				}
 			}
+			const engines::engine& engine() const
+			{
+				return m_engine ;
+			}
 			bool waitForFinished() const
 			{
 				if( m_exe ){
@@ -676,11 +684,12 @@ public:
 			}
 		private:
 			QProcess * m_exe ;
+			const engines::engine& m_engine ;
 			const QString& m_mountPath ;
 		};
 
-		struct terminate_result{
-
+		struct terminate_result
+		{
 			Task::process::result result ;
 			QString exe ;
 			QStringList args ;
@@ -688,11 +697,33 @@ public:
 
 		engines::engine::exe_args unMountCommand( const engines::engine::terminate_process& e ) const ;
 
+		virtual bool installedVersionGreaterOrEqual( const QString& ) const ;
+
+		virtual void updateExecutablePaths() const ;
+
+		virtual bool enginesMatch( const QString& ) const ;
+
+		virtual QString installedVersionHack( const QString& ) const ;
+
+		virtual void setInstalledVersionHack( const QString&,const QString& ) const ;
+
+		virtual QString setExecutablePermissions( const QString& ) const ;
+
+		virtual void setUpBinary( bool,QStringList&,const QString& ) const ;
+
+		virtual void deleteBinPath( const QString& ) const ;
+
+		virtual void removeExtraFiles( const QString& ) const ;
+
+		virtual bool onlineArchiveFileName( const QString& ) const ;
+
+		virtual void changeEnvironment( const QString&,const QStringList& ) const ;
+
+		virtual bool updatable( bool ) const ;
+
 		virtual const QStringList& windowsUnmountCommand() const ;
 
-		virtual terminate_result terminateProcess( const terminate_process& ) const ;
-
-		virtual terminate_result terminateProcess( const QString& mountPath ) const ;
+		virtual terminate_result terminateProcess( int,const terminate_process& ) const ;
 
 		virtual engine::engine::error errorCode( const QString& ) const ;
 
@@ -701,6 +732,8 @@ public:
 		virtual volumeInfo::List mountInfo( const volumeInfo::List& ) const ;
 
 		virtual bool canShowVolumeProperties() const ;
+
+		virtual void parseVolumeProperties( QString& ) const ;
 
 		virtual Task::future< QString >& volumeProperties( const QString& cipherFolder,
 								   const QString& mountPoint ) const ;
@@ -799,14 +832,16 @@ public:
 		virtual void GUICreateOptions( const createGUIOptions& ) const ;
 
 		virtual void GUIMountOptions( const mountGUIOptions& ) const ;
-	protected:
-		bool unmountVolume( const engine::engine::exe_args_const& exe,bool usePolkit ) const ;
 
-		class commandOptions{
+		virtual utility::Task unmountVolume( const engine::engine::exe_args_const& exe,bool usePolkit ) const ;
+	protected:
+		class commandOptions
+		{
 		public:
 			class fuseOptions ;
 
-			class Options{
+			class Options
+			{
 			public:
 				Options( QStringList& m ) : m_options( m )
 				{
@@ -814,7 +849,7 @@ public:
 				template< typename E >
 				void add( E&& e )
 				{
-					m_options.append( e ) ;
+					m_options.append( std::forward< E >( e ) ) ;
 				}
 				template< typename E,typename ... T >
 				void add( E&& e,T&& ... m )
@@ -927,10 +962,51 @@ public:
 			QString m_mode ;
 		};
 	private:
-		const BaseOptions m_Options ;
+		class version
+		{
+		public:
+			version( const engines::engine& e ) : m_engine( e )
+			{
+			}
+			engines::engineVersion operator()()
+			{
+				return m_engine.installedVersionImpl() ;
+			}
+		private:
+			const engines::engine& m_engine ;
+		} ;
+		class fullPath
+		{
+		public:
+			fullPath( const engines::engine& engine ) : m_engine( engine )
+			{
+			}
+			QString operator()()
+			{
+				for( const auto& it : m_engine.m_Options.executableNames ){
+
+					auto s = engines::executableFullPath( it,m_engine ) ;
+
+					if( !s.isEmpty() ){
+
+						return s ;
+					}
+				}
+
+				return QString() ;
+			}
+		private:
+			const engines::engine& m_engine ;
+		} ;
+
+		QProcessEnvironment setEnv() const ;
+		engines::engineVersion installedVersionImpl() const ;
+		engines::engineVersion installedVersion( const BaseOptions::vInfo& ) const ;
+		Task::process::result installedVersionImpl( const BaseOptions::vInfo& ) const ;
+		BaseOptions m_Options ;
 		const QProcessEnvironment m_processEnvironment ;
-		const engines::exeFullPath m_exeFullPath ;
-		const engines::version m_version ;
+		mutable engines::exeFullPath m_exeFullPath ;
+		mutable engines::version m_version ;
 		static engines::exeFullPath m_exeJavaFullPath ;
 		static engines::exeFullPath m_exeFuserMount ;
 	} ;
@@ -944,7 +1020,8 @@ public:
 	void aboutToExit() const ;
 	const std::vector< engines::engine::Wrapper >& supportedEngines() const ;
 
-	class engineWithPaths{
+	class engineWithPaths
+	{
 	public:
 	        engineWithPaths() ;
 		engineWithPaths( const QString& engine ) ;

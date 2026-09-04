@@ -24,15 +24,14 @@
 
 #include <QFileDialog>
 
-configOptions::configOptions( QWidget * parent,
-			      secrets& a,
-			      QMenu * m,
-			      configOptions::functions f ) :
-	QDialog( parent ),
+#include "sirikali.h"
+
+configOptions::configOptions( sirikali * s,secrets& a,QMenu * m ) :
+	QDialog( s ),
 	m_ui( new Ui::configOptions ),
-	m_functions( std::move( f ) ),
 	m_secrets( a ),
-	m_settings( settings::instance() )
+	m_settings( settings::instance() ),
+	m_sirikali( *s )
 {
 	m_ui->setupUi( this ) ;
 
@@ -42,17 +41,82 @@ configOptions::configOptions( QWidget * parent,
 
 	m_ui->tabWidget->setCurrentIndex( 0 ) ;
 
-	m_ui->pbMountPointPrefix->setIcon( QIcon( ":/folder.png" ) ) ;
+	m_ui->pbMountPointPrefix->setIcon( QIcon( ":/icons/folder.png" ) ) ;
+	m_ui->pbMountPointPrefixDefault->setIcon( QIcon( ":/icons/setting_reset.png" ) );
 
-	m_ui->pbPostMountCommand->setIcon( QIcon( ":/executable.png" ) ) ;
+	m_ui->pbPostMountCommand->setIcon( QIcon( ":/icons/folder.png" ) ) ;
+	m_ui->pbRunPostMountCommandDefault->setIcon( QIcon( ":/icons/setting_reset.png" ) );
 
-	m_ui->pbPreUnMountCommand->setIcon( QIcon( ":/executable.png" ) ) ;
+	m_ui->pbPreUnMountCommand->setIcon( QIcon( ":/icons/folder.png" ) ) ;
+	m_ui->pbRunPreUnMountCommandDefault->setIcon( QIcon( ":/icons/setting_reset.png" ) );
 
-	m_ui->pbSetExternalCommand->setIcon( QIcon( ":/executable.png" ) ) ;
+	m_ui->pbSetExternalCommand->setIcon( QIcon( ":/icons/folder.png" ) ) ;
+	m_ui->pbExternalExecutableDefault->setIcon( QIcon( ":/icons/setting_reset.png" ) );
 
-	m_ui->pbSetFileManager->setIcon( QIcon( ":/executable.png" ) ) ;
+	m_ui->pbSetFileManager->setIcon( QIcon( ":/icons/folder.png" ) ) ;
+	m_ui->pbSetFileManagerToDefault->setIcon( QIcon( ":/icons/setting_reset.png" ) );
 
-	m_ui->pbRunPeriodicallyCommand->setIcon( QIcon( ":/executable.png" ) ) ;
+	m_ui->pbRunPeriodicallyCommand->setIcon( QIcon( ":/icons/folder.png" ) ) ;
+	m_ui->pbRunCommandPeriodicallyDefault->setIcon( QIcon( ":/icons/setting_reset.png" ) );
+
+	if( utility::platformIsFlatPak() ){		
+
+		m_ui->lineEditFileManager->setEnabled( false ) ;
+		m_ui->pbSetFileManager->setEnabled( false ) ;
+		m_ui->pbSetFileManagerToDefault->setEnabled( false ) ;
+		m_ui->lineEditExecutableKeySource->setEnabled( false ) ;
+		m_ui->pbSetExternalCommand->setEnabled( false ) ;
+		m_ui->pbExternalExecutableDefault->setEnabled( false ) ;
+
+		m_ui->cbInternallyManageBackEnds->setChecked( true ) ;
+		m_ui->cbInternallyManageBackEnds->setEnabled( false ) ;
+
+	}else if( utility::platformIsWindows() ){
+
+		auto m = m_settings.internallyManageBackEnds() ;
+
+		m_ui->cbInternallyManageBackEnds->setChecked( m ) ;
+		m_ui->cbInternallyManageBackEnds->setEnabled( true ) ;
+
+	}else if( utility::platformIsLinux() ){
+
+		auto m = m_settings.internallyManageBackEnds() ;
+
+		m_ui->cbInternallyManageBackEnds->setChecked( m ) ;
+		m_ui->cbInternallyManageBackEnds->setEnabled( true ) ;
+	}else{
+		m_ui->cbInternallyManageBackEnds->setChecked( false ) ;
+		m_ui->cbInternallyManageBackEnds->setEnabled( false ) ;
+	}
+
+	auto theme = m_settings.getThemeType() ;
+
+	if( theme == settings::themeType::dark ){
+
+		m_ui->cbThemes->setCurrentIndex( 1 ) ;
+
+	}else if( theme == settings::themeType::light ){
+
+		m_ui->cbThemes->setCurrentIndex( 2 ) ;
+	}else{
+		m_ui->cbThemes->setCurrentIndex( 0 ) ;
+	}
+
+	auto sig = static_cast< void( QComboBox::* )( int ) >( &QComboBox::activated ) ;
+
+	connect( m_ui->cbThemes,sig,[ this ]( int m ){
+
+		if( m == 0 ){
+
+			m_settings.setThemeType( settings::themeType::platformDefault ) ;
+
+		}else if( m == 1 ){
+
+			m_settings.setThemeType( settings::themeType::dark ) ;
+		}else{
+			m_settings.setThemeType( settings::themeType::light ) ;
+		}
+	} ) ;
 
 	connect( m_ui->pushButton,&QPushButton::clicked,[ this ](){ this->HideUI() ; } ) ;
 
@@ -66,9 +130,24 @@ configOptions::configOptions( QWidget * parent,
 		m_settings.reUseMountPoint( e ) ;
 	} ) ;
 
-	connect( m_ui->cbAutoCheckForUpdates,&QCheckBox::toggled,[ this ]( bool e ){
+	connect( m_ui->cbInternallyManageBackEnds,&QCheckBox::toggled,[ this ]( bool e ){
 
-		m_settings.autoCheck( e ) ;
+		m_settings.setInternallyManageBackEnds( e ) ;
+
+		if( !e ){
+
+			auto mm = engines::instance().supportedEngines() ;
+
+			auto m = engines::defaultBinPath() ;
+
+			for( const auto& it : mm ){
+
+				if( it->updatable( true ) ){
+
+					it->deleteBinPath( m ) ;
+				}
+			}
+		}
 	} ) ;
 
 	connect( m_ui->cbStartMinimized,&QCheckBox::toggled,[ this ]( bool e ){
@@ -76,9 +155,13 @@ configOptions::configOptions( QWidget * parent,
 		m_settings.setStartMinimized( e ) ;
 	} ) ;
 
-	connect( m_ui->cbUseDarkTheme,&QCheckBox::toggled,[ this ]( bool e ){
+	m_ui->cbShowTrayIcon->setChecked( m_settings.showSystemTray() ) ;
 
-		m_settings.useDarkMode( e ) ;
+	connect( m_ui->cbShowTrayIcon,&QCheckBox::toggled,[ this ]( bool e ){
+
+		m_settings.setShowSystemTray( e ) ;
+
+		m_sirikali.showTrayIcon( e ) ;
 	} ) ;
 
 	if( utility::platformIsWindows() ){
@@ -116,7 +199,7 @@ configOptions::configOptions( QWidget * parent,
 
 	connect( m,&QMenu::triggered,[ this ]( QAction * ac ){
 
-		m_functions.function_2( ac ) ;
+		m_sirikali.updateLanguage( ac ) ;
 
 		this->translateUI() ;
 	} ) ;
@@ -184,7 +267,7 @@ configOptions::configOptions( QWidget * parent,
 	connect( m_ui->pbSetFileManagerToDefault,&QPushButton::pressed,[ this ](){
 
 		m_settings.setFileManager( QString() ) ;
-		m_ui->lineEditFileManager->setText( m_settings.fileManager() ) ;
+		m_ui->lineEditFileManager->setText( m_settings.fileManager().toString() ) ;
 	} ) ;
 
 	connect( m_ui->pbExternalExecutableDefault,&QPushButton::pressed,[ this ](){
@@ -253,6 +336,21 @@ void configOptions::translateUI()
 	}else{
 		m_ui->label_3->setText( tr( "Set Executables Search Path" ) ) ;
 	}
+
+	if( utility::platformIsFlatPak() ){
+
+		m_ui->cbInternallyManageBackEnds->setText( tr( "Manage Securefs, Gocryptfs, Cryfs And Cryptomator" ) ) ;
+
+	}else if( utility::platformIsWindows() ){
+
+		m_ui->cbInternallyManageBackEnds->setText( tr( "Manage Securefs, Cppcryptfs And Cryptomator" ) ) ;
+
+	}else if( utility::platformIsLinux() ){
+
+		m_ui->cbInternallyManageBackEnds->setText( tr( "Manage Securefs And Gocryptfs" ) ) ;
+	}else{
+		m_ui->cbInternallyManageBackEnds->setText( tr( "Manage Securefs" ) ) ;
+	}
 }
 
 void configOptions::ShowUI()
@@ -261,11 +359,9 @@ void configOptions::ShowUI()
 
 	m_ui->cbReUseMountPoint->setChecked( m_settings.reUseMountPoint() ) ;
 
-	m_ui->cbAutoCheckForUpdates->setChecked( m_settings.autoCheck() ) ;
-
 	m_ui->cbStartMinimized->setChecked( m_settings.startMinimized() ) ;
 
-	m_ui->lineEditFileManager->setText( m_settings.fileManager() ) ;
+	m_ui->lineEditFileManager->setText( m_settings.fileManager().toString() ) ;
 
 	if( utility::platformIsWindows() ){
 
@@ -290,8 +386,6 @@ void configOptions::ShowUI()
 
 	m_ui->chShowDebugWindowOnStartup->setChecked( m_settings.showDebugWindowOnStartup() ) ;
 
-	m_ui->cbUseDarkTheme->setChecked( m_settings.useDarkMode() ) ;
-
 	if( utility::platformIsWindows() ){
 
 		m_ui->lineEditMountPointPrefix->setText( m_settings.windowsExecutableSearchPath() ) ;
@@ -304,7 +398,7 @@ void configOptions::ShowUI()
 
 void configOptions::HideUI()
 {
-	m_functions.function_1() ;
+	m_sirikali.enableAllAndSetFileManager() ;
 
 	m_settings.setFileManager( m_ui->lineEditFileManager->text() ) ;
 	m_settings.preUnMountCommand( m_ui->lineEditBeforesUnMount->text() ) ;

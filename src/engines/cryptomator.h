@@ -24,6 +24,26 @@ class cryptomator : public engines::engine
 public:
 	cryptomator() ;
 
+	bool updatable( bool ) const override ;
+
+	bool onlineArchiveFileName( const QString& ) const override ;
+
+	bool enginesMatch( const QString& ) const override ;
+
+	void deleteBinPath( const QString& ) const override ;
+
+	void setUpBinary( bool,QStringList&,const QString& ) const override ;
+
+	engines::engine::terminate_result terminateProcess( int,const engines::engine::terminate_process& ) const override ;
+
+	QString setExecutablePermissions( const QString& ) const override ;
+
+	void changeEnvironment( const QString&,const QStringList& ) const override ;
+
+	engines::engine::args command( const QByteArray&,const engines::engine::cmdArgsList&,bool ) const override ;
+
+	void updateOptions( QStringList&,const engines::engine::cmdArgsList&,bool creating ) const override ;
+
 	engines::engine::ownsCipherFolder ownsCipherPath( const QString& cipherPath,
 							  const QString& configPath ) const override ;
 
@@ -31,5 +51,5 @@ public:
 
 	engines::engine::status passAllRequirenments( const engines::engine::cmdArgsList& opt ) const override ;
 private:
-	const engines::versionGreaterOrEqual m_version_greater_or_equal_0_4_5 ;
+	const engines::versionGreaterOrEqual m_version_greater_or_equal_0_6_0 ;
 } ;

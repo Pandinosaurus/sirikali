@@ -24,18 +24,21 @@
 
 #include <utility>
 #include <tuple>
-#include <QtGlobal>
 
+#include <QtGlobal>
+#include <QSettings>
 #include <QString>
 
-namespace SiriKali{
-namespace Windows{
+namespace SiriKali
+{
+namespace Windows
+{
 
 #ifdef Q_OS_WIN
 
 #include <windows.h>
 
-static int _terminateProcess( unsigned long pid )
+int terminateProcess( unsigned long pid )
 {
 	FreeConsole() ;
 
@@ -57,78 +60,21 @@ static int _terminateProcess( unsigned long pid )
 	return 1 ;
 }
 
-static HKEY _reg_open_key( const char * subKey )
-{
-	HKEY hkey = HKEY_LOCAL_MACHINE ;
-	HKEY m ;
-	REGSAM wow64 = KEY_QUERY_VALUE | KEY_WOW64_64KEY ;
-	REGSAM wow32 = KEY_QUERY_VALUE | KEY_WOW64_32KEY ;
-	unsigned long x = 0 ;
-
-	if( RegOpenKeyExA( hkey,subKey,x,wow64,&m ) == ERROR_SUCCESS ){
-
-		return m ;
-
-	}else if( RegOpenKeyExA( hkey,subKey,x,wow32,&m ) == ERROR_SUCCESS ){
-
-		return m ;
-	}else{
-		return nullptr ;
-	}
-}
-
-static void _reg_close_key( HKEY hkey )
-{
-	if( hkey != nullptr ){
-
-		RegCloseKey( hkey ) ;
-	}
-}
-
-static QByteArray _reg_get_value( HKEY hkey,const char * key )
-{
-	if( hkey != nullptr ){
-
-		DWORD dwType = REG_SZ ;
-
-		std::array< char,4096 > buffer ;
-
-		std::fill( buffer.begin(),buffer.end(),'\0' ) ;
-
-		auto e = reinterpret_cast< BYTE * >( buffer.data() ) ;
-		auto m = static_cast< DWORD >( buffer.size() ) ;
-
-		if( RegQueryValueEx( hkey,key,nullptr,&dwType,e,&m ) == ERROR_SUCCESS ){
-
-			return { buffer.data(),static_cast< int >( m ) } ;
-		}
-	}
-
-	return {} ;
-}
-
-static QString _readRegistry( const char * subKey,const char * key )
-{
-	auto s = utility2::unique_rsc( _reg_open_key,_reg_close_key,subKey ) ;
-
-	return _reg_get_value( s.get(),key ) ;
-}
-
 static auto _msg( DWORD err )
 {
-	TCHAR * s = nullptr ;
+	char * s = nullptr ;
 
 	DWORD flags = FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS | FORMAT_MESSAGE_ALLOCATE_BUFFER ;
 
-	auto m = FormatMessage( flags,
+	auto m = FormatMessageA( flags,
 				nullptr,
 				err,
 				MAKELANGID( LANG_NEUTRAL,SUBLANG_DEFAULT ),
-				reinterpret_cast< TCHAR * >( &s ),
+				reinterpret_cast< char * >( &s ),
 				0,
 				nullptr ) ;
 
-	return std::make_pair( m > 0,utility2::unique_ptr( s,[]( TCHAR * e ){ LocalFree( e ) ; } ) ) ;
+	return std::make_pair( m > 0,utility2::unique_ptr( s,[]( char * e ){ LocalFree( e ) ; } ) ) ;
 }
 
 QString lastError()
@@ -157,11 +103,11 @@ static QString _errorMsg( DWORD err,const QString& path )
 
 std::pair< bool,QString > driveHasSupportedFileSystem( const QString& path )
 {
-	auto a = path.mid( 0,1 ).toLatin1()[ 0 ] ;
+	auto aa = path.mid( 0,1 ).toUtf8() ;
 
-	std::array< TCHAR,4 >rpath = { a,':','\\','\0' } ;
+	std::array< char,4 >rpath = { aa[ 0 ],':','\\','\0' } ;
 
-	std::array< TCHAR,MAX_PATH + 1 > fsname ;
+	std::array< char,MAX_PATH + 1 > fsname ;
 
 	std::fill( fsname.begin(),fsname.end(),'\0' ) ;
 
@@ -183,24 +129,67 @@ std::pair< bool,QString > driveHasSupportedFileSystem( const QString& path )
 	}
 }
 
+QString applicationDirPath()
+{
+	std::array< char,4096 > buffer ;
+
+	GetModuleFileNameA( nullptr,buffer.data(),static_cast< DWORD >( buffer.size() ) ) ;
+
+	auto m = QDir::fromNativeSeparators( buffer.data() ) ;
+	auto s = m.lastIndexOf( '/' ) ;
+
+	if( s != -1 ){
+
+		m.truncate( s ) ;
+	}
+
+	return m ;
+}
+
+static QString _readRegistry( const QString&,const QString& )
+{
+	return {} ;
+}
+
+template< typename E,typename ... T >
+static QString _readRegistry( const QString& key,const QString& value,const E& first,T&& ... rest )
+{
+	QSettings settings( "HKEY_LOCAL_MACHINE\\" + key,first ) ;
+
+	auto m = settings.value( value ).toString() ;
+
+	if( m.isEmpty() ){
+
+		return _readRegistry( key,value,std::forward< T >( rest ) ... ) ;
+	}else{
+		return m ;
+	}
+}
+
+QString engineInstalledDir( const QString& key,const QString& value )
+{
+	return _readRegistry( key,value,QSettings::Registry32Format,QSettings::Registry64Format ) ;
+}
+
 #else
 
+QString engineInstalledDir( const QString&,const QString& )
+{
+	return {} ;
+}
+
+QString applicationDirPath()
+{
+	return {} ;
+}
 QString lastError()
 {
 	return {} ;
 }
 
-static int _terminateProcess( unsigned long pid )
+int terminateProcess( unsigned long )
 {
-	Q_UNUSED( pid )
 	return 1 ;
-}
-
-static QString _readRegistry( const char * subKey,const char * key )
-{
-	Q_UNUSED( subKey )
-	Q_UNUSED( key )
-	return QString() ;
 }
 
 std::pair< bool,QString > driveHasSupportedFileSystem( const QString& path )
@@ -216,11 +205,6 @@ std::pair< bool,QString > driveHasSupportedFileSystem( const QString& path )
 
 }
 
-int SiriKali::Windows::terminateProcess( unsigned long pid )
-{
-	return _terminateProcess( pid ) ;
-}
-
 QString SiriKali::Windows::engineInstalledDir( const engines::engine& m )
 {
 	const auto& key   = m.windowsInstallPathRegistryKey() ;
@@ -229,14 +213,9 @@ QString SiriKali::Windows::engineInstalledDir( const engines::engine& m )
 	if( key.isEmpty() || value.isEmpty() ){
 
 		return {} ;
+	}else{
+		return SiriKali::Windows::engineInstalledDir( key,value ) ;
 	}
-
-	return SiriKali::Windows::engineInstalledDir( key,value ) ;
-}
-
-QString SiriKali::Windows::engineInstalledDir( const QString& key,const QString& value )
-{
-	return _readRegistry( key.toLatin1().constData(),value.toLatin1().constData() ) ;
 }
 
 QStringList SiriKali::Windows::engineInstalledDirs()
